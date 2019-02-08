@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,37 +20,44 @@ func init() {
 }
 
 var executeCmd = &cobra.Command{
-	Use:   "execute",
+	Use:   "execute [flags] [command]",
 	Short: "Execute command and submit change data",
 	Long:  `Executes a command, monitors its duration and submits the change event to the FireHydrant API.`,
 	RunE:  execute,
 }
 
 func execute(cmd *cobra.Command, args []string) error {
-	setupClient()
-	ce := NewChangeEvent()
-	command := strings.Join(args, " ")
+	if len(args) < 1 {
+		return errors.New("No command passed")
+	}
 
-	ce.Summary = command
+	setupClient()
+
+	ce := NewChangeEvent()
+	ce.Summary = strings.Join(args, " ")
 	ce.Environment = environment
 	ce.Service = service
 	ce.RawIdentities = identities
 
-	fmt.Println(fmt.Sprintf("Executing command %s", command))
-	cmdExec := exec.Command(command)
+	command, flags := args[0], args[1:]
+
+	fmt.Println(fmt.Sprintf("Executing command %s with args %s", command, strings.Join(flags, " ")))
+	cmdExec := exec.Command(command, flags...)
 
 	// We don't actually want to capture this; pass it through to the calling shell
 	cmdExec.Stdout = os.Stdout
 	cmdExec.Stderr = os.Stderr
+	ce.StartsAt = time.Now()
 	err := cmdExec.Run()
+	duration := time.Since(ce.StartsAt) / time.Millisecond
 	ce.EndsAt = time.Now()
 
 	// getting the exit code is a pita so i'm not doing it yet
 	if err != nil {
 		ce.Identities["error"] = err.Error()
-		fmt.Println(fmt.Sprintf("Executed command, duration %dms, error: %s", 0, err))
+		fmt.Println(fmt.Sprintf("Executed command, duration %dms, error: %s", duration, err))
 	} else {
-		fmt.Println(fmt.Sprintf("Executed command, duration %dms", 0))
+		fmt.Println(fmt.Sprintf("Executed command, duration %dms", duration))
 	}
 
 	id, err := ce.Submit()
