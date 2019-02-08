@@ -10,37 +10,46 @@ import (
 )
 
 type ChangeEvent struct {
-	Environment string
-	Service     string
-	Identities  string
-	StartsAt    time.Time
-	EndsAt      time.Time
-	Summary     string
+	Environment   string
+	Service       string
+	RawIdentities string
+	Identities    map[string]string
+	StartsAt      time.Time
+	EndsAt        time.Time
+	Summary       string
 }
 
 func NewChangeEvent() ChangeEvent {
 	return ChangeEvent{
-		StartsAt: time.Now(),
-		EndsAt:   time.Now(),
+		Identities: make(map[string]string),
+		StartsAt:   time.Now(),
+		EndsAt:     time.Now(),
 	}
 }
 
-func (ce *ChangeEvent) parseIdentities() []*models.PostV1ChangesEventsChangeIdentitiesItems0 {
+func (ce *ChangeEvent) identitiesToAPI() []*models.PostV1ChangesEventsChangeIdentitiesItems0 {
 	ciItems := []*models.PostV1ChangesEventsChangeIdentitiesItems0{}
 
-	for _, identity := range strings.Split(ce.Identities, ",") {
-		iParts := strings.Split(identity, "=")
-		if len(iParts) > 1 {
-			ci := models.PostV1ChangesEventsChangeIdentitiesItems0{Type: &iParts[0], Value: &iParts[1]}
-			ciItems = append(ciItems, &ci)
-		}
+	for key, value := range ce.Identities {
+		ci := models.PostV1ChangesEventsChangeIdentitiesItems0{Type: &key, Value: &value}
+		ciItems = append(ciItems, &ci)
 	}
 
 	return ciItems
 }
 
+func (ce *ChangeEvent) parseIdentities() {
+	for _, identity := range strings.Split(ce.RawIdentities, ",") {
+		iParts := strings.Split(identity, "=")
+		if len(iParts) > 1 {
+			ce.Identities[iParts[0]] = iParts[1]
+		}
+	}
+}
+
 func (ce *ChangeEvent) Submit() (string, error) {
 	c := changes.NewPostV1ChangesEventsParams()
+	ce.parseIdentities()
 
 	c.V1ChangesEvents = &models.PostV1ChangesEvents{
 		Environments:     []string{ce.Environment},
@@ -48,7 +57,7 @@ func (ce *ChangeEvent) Submit() (string, error) {
 		StartsAt:         strfmt.DateTime(ce.StartsAt),
 		EndsAt:           strfmt.DateTime(ce.EndsAt),
 		Summary:          &ce.Summary,
-		ChangeIdentities: ce.parseIdentities(),
+		ChangeIdentities: ce.identitiesToAPI(),
 	}
 
 	resp, err := client.client.Changes.PostV1ChangesEvents(c, client.auth)

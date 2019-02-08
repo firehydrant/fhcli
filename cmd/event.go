@@ -7,12 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var environment string
-var service string
-var payload string
-var identities string
-var revision string
-
 func init() {
 	eventCmd.Flags().StringVarP(&environment, "environment", "e", "", "Environmnent UUID")
 	eventCmd.Flags().StringVarP(&service, "service", "s", "", "Service UUID")
@@ -35,7 +29,7 @@ func event(cmd *cobra.Command, args []string) error {
 	ce.Summary = strings.Join(args, " ")
 	ce.Environment = environment
 	ce.Service = service
-	ce.Identities = identities
+	ce.RawIdentities = identities
 
 	id, err := ce.Submit()
 	if err != nil {

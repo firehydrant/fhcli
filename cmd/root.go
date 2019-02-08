@@ -23,6 +23,12 @@ var apiHost string
 var debug bool
 var client apiClient
 
+var environment string
+var service string
+var payload string
+var identities string
+var revision string
+
 func init() {
 	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "API key")
 	rootCmd.PersistentFlags().StringVar(&apiHost, "api-host", "", "API hostname (default: api.firehydrant.io")
