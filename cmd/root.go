@@ -21,6 +21,7 @@ type apiClient struct {
 var apiKey string
 var apiHost string
 var debug bool
+var ignoreErrors bool
 var client apiClient
 
 var environment string
@@ -33,6 +34,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "API key")
 	rootCmd.PersistentFlags().StringVar(&apiHost, "api-host", "", "API hostname (default: api.firehydrant.io")
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Debug HTTP requests")
+	rootCmd.PersistentFlags().BoolVarP(&ignoreErrors, "ignore-errors", "x", true, "Ignore errors from FireHydrant API, exit 0")
 }
 
 var rootCmd = &cobra.Command{
@@ -47,9 +49,17 @@ API Documentation: https://apidocs.firehydrant.io`,
 // Execute the base command
 func Execute() {
 
+	rootCmd.SilenceUsage = ignoreErrors
+	rootCmd.SilenceErrors = ignoreErrors
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
-		os.Exit(1)
+
+		if ignoreErrors {
+			os.Exit(0)
+		} else {
+			os.Exit(1)
+		}
 	}
 }
 
