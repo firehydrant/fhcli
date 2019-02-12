@@ -53,9 +53,19 @@ func (ce *ChangeEvent) Submit() (string, error) {
 	c := changes.NewPostV1ChangesEventsParams()
 	ce.parseIdentities()
 
+	envList := []string{}
+	if len(ce.Environment) > 0 {
+		envList = append(envList, ce.Environment)
+	}
+
+	svcList := []string{}
+	if len(ce.Service) > 0 {
+		svcList = append(svcList, ce.Service)
+	}
+
 	c.V1ChangesEvents = &models.PostV1ChangesEvents{
-		Environments:     []string{ce.Environment},
-		Services:         []string{ce.Service},
+		Environments:     envList,
+		Services:         svcList,
 		StartsAt:         strfmt.DateTime(ce.StartsAt),
 		EndsAt:           strfmt.DateTime(ce.EndsAt),
 		Summary:          &ce.Summary,
