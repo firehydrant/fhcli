@@ -5,11 +5,9 @@ jobs:
       - image: circleci/golang:1.11
     steps:
       - checkout
-      - run: tee ~/.netrc > /dev/null <<EOF
-machine github.com
-login fh-releaser
-password $GITHUB_TOKEN
-EOF
+      - run: echo machine github.com > ~/.netrc
+      - run: echo login fh-releaser >> ~/.netrc
+      - run: echo password $GITHUB_TOKEN >> ~/.netrc
       - run: curl -sL https://git.io/goreleaser | bash
 workflows:
   version: 2
