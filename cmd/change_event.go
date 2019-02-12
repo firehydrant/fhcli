@@ -31,7 +31,9 @@ func (ce *ChangeEvent) identitiesToAPI() []*models.PostV1ChangesEventsChangeIden
 	ciItems := []*models.PostV1ChangesEventsChangeIdentitiesItems0{}
 
 	for key, value := range ce.Identities {
-		ci := models.PostV1ChangesEventsChangeIdentitiesItems0{Type: &key, Value: &value}
+		k := string(key)
+		v := string(value)
+		ci := models.PostV1ChangesEventsChangeIdentitiesItems0{Type: &k, Value: &v}
 		ciItems = append(ciItems, &ci)
 	}
 
