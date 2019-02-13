@@ -1,8 +1,10 @@
-package cmd
+package events
 
 import (
 	"strings"
 	"time"
+
+	apiclient "github.com/firehydrant/fhcli/pkg/api_client"
 
 	"github.com/firehydrant/api-client-go/client/changes"
 	"github.com/firehydrant/api-client-go/models"
@@ -13,7 +15,9 @@ type ChangeEvent struct {
 	Environment   string
 	Service       string
 	RawIdentities string
+	RawLabels     string
 	Identities    map[string]string
+	Labels        map[string]string
 	StartsAt      time.Time
 	EndsAt        time.Time
 	Summary       string
@@ -22,6 +26,7 @@ type ChangeEvent struct {
 func NewChangeEvent() ChangeEvent {
 	return ChangeEvent{
 		Identities: make(map[string]string),
+		Labels:     make(map[string]string),
 		StartsAt:   time.Now(),
 		EndsAt:     time.Now(),
 	}
@@ -49,9 +54,19 @@ func (ce *ChangeEvent) parseIdentities() {
 	}
 }
 
-func (ce *ChangeEvent) Submit() (string, error) {
+func (ce *ChangeEvent) parseLabels() {
+	for _, label := range strings.Split(ce.RawLabels, ",") {
+		lParts := strings.Split(label, "=")
+		if len(lParts) > 1 {
+			ce.Labels[lParts[0]] = lParts[1]
+		}
+	}
+}
+
+func (ce *ChangeEvent) Submit(client apiclient.ApiClient) (string, error) {
 	c := changes.NewPostV1ChangesEventsParams()
 	ce.parseIdentities()
+	ce.parseLabels()
 
 	envList := []string{}
 	if len(ce.Environment) > 0 {
@@ -70,9 +85,10 @@ func (ce *ChangeEvent) Submit() (string, error) {
 		EndsAt:           strfmt.DateTime(ce.EndsAt),
 		Summary:          &ce.Summary,
 		ChangeIdentities: ce.identitiesToAPI(),
+		Labels:           ce.Labels,
 	}
 
-	resp, err := client.client.Changes.PostV1ChangesEvents(c, client.auth)
+	resp, err := client.Client.Changes.PostV1ChangesEvents(c, client.Auth)
 
 	if err != nil {
 		return "", err
