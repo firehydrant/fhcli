@@ -23,7 +23,7 @@ type ApiClient struct {
 func NewApiClient(c Config) ApiClient {
 	client := ApiClient{}
 
-	client.transport = transport.New(c.ApiHost, "", []string{"http"})
+	client.transport = transport.New(c.ApiHost, "", []string{"https"})
 	client.transport.Debug = c.Debug
 
 	client.Client = fhclient.New(client.transport, strfmt.Default)
