@@ -9,7 +9,10 @@ import (
 )
 
 func eventCmd(c *cli.Context) error {
-	client := NewApiClient(c)
+	client, err := NewApiClient(c)
+	if err != nil {
+		return err
+	}
 
 	ce := changeevents.NewChangeEvent()
 

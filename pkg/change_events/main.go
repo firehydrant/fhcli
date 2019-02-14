@@ -45,28 +45,19 @@ func (ce *ChangeEvent) identitiesToAPI() []*models.PostV1ChangesEventsChangeIden
 	return ciItems
 }
 
-func (ce *ChangeEvent) parseIdentities() {
-	for _, identity := range strings.Split(ce.RawIdentities, ",") {
+func (ce *ChangeEvent) parseKV(raw string, target map[string]string) {
+	for _, identity := range strings.Split(raw, ",") {
 		iParts := strings.Split(identity, "=")
 		if len(iParts) > 1 {
-			ce.Identities[iParts[0]] = iParts[1]
-		}
-	}
-}
-
-func (ce *ChangeEvent) parseLabels() {
-	for _, label := range strings.Split(ce.RawLabels, ",") {
-		lParts := strings.Split(label, "=")
-		if len(lParts) > 1 {
-			ce.Labels[lParts[0]] = lParts[1]
+			target[iParts[0]] = iParts[1]
 		}
 	}
 }
 
 func (ce *ChangeEvent) Submit(client apiclient.ApiClient) (string, error) {
 	c := changes.NewPostV1ChangesEventsParams()
-	ce.parseIdentities()
-	ce.parseLabels()
+	ce.parseKV(ce.RawIdentities, ce.Identities)
+	ce.parseKV(ce.RawLabels, ce.Labels)
 
 	envList := []string{}
 	if len(ce.Environment) > 0 {

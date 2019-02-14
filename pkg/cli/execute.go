@@ -13,7 +13,10 @@ import (
 )
 
 func executeCmd(c *cli.Context) error {
-	client := NewApiClient(c)
+	client, err := NewApiClient(c)
+	if err != nil {
+		return err
+	}
 
 	if len(c.Args()) < 1 {
 		return errors.New("No command passed")
@@ -36,7 +39,7 @@ func executeCmd(c *cli.Context) error {
 	cmdExec.Stdout = os.Stdout
 	cmdExec.Stderr = os.Stderr
 	ce.StartsAt = time.Now()
-	err := cmdExec.Run()
+	err = cmdExec.Run()
 	duration := time.Since(ce.StartsAt) / time.Millisecond
 	ce.EndsAt = time.Now()
 

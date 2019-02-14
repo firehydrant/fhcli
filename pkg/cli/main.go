@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+
 	apiclient "github.com/firehydrant/fhcli/pkg/api_client"
 	"github.com/urfave/cli"
 )
@@ -43,7 +45,7 @@ func NewApp() *cli.App {
 			Value:  "api.firehydrant.io",
 			EnvVar: "FH_API_HOST",
 		},
-		cli.BoolTFlag{
+		cli.BoolFlag{
 			Name:  "debug, d",
 			Usage: "Enable debug output for API calls",
 		},
@@ -71,12 +73,20 @@ func NewApp() *cli.App {
 	return app
 }
 
-func NewApiClient(c *cli.Context) apiclient.ApiClient {
+func NewApiClient(c *cli.Context) (apiclient.ApiClient, error) {
 	config := apiclient.Config{
 		ApiHost: c.GlobalString("api-host"),
 		ApiKey:  c.GlobalString("api-key"),
 		Debug:   c.GlobalBool("debug"),
 	}
 
-	return apiclient.NewApiClient(config)
+	if len(config.ApiHost) == 0 {
+		return apiclient.ApiClient{}, errors.New("Invalid or no API host provided")
+	}
+
+	if len(config.ApiKey) == 0 {
+		return apiclient.ApiClient{}, errors.New("Invalid or no API key provided")
+	}
+
+	return apiclient.NewApiClient(config), nil
 }
