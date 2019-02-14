@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 
 	apiclient "github.com/firehydrant/fhcli/pkg/api_client"
 	"github.com/urfave/cli"
@@ -30,7 +31,7 @@ var sharedFlags = []cli.Flag{
 	},
 }
 
-func NewApp() *cli.App {
+func NewApp(commit string, version string) *cli.App {
 	app := cli.NewApp()
 
 	app.Flags = []cli.Flag{
@@ -69,6 +70,8 @@ func NewApp() *cli.App {
 			Flags:  sharedFlags,
 		},
 	}
+
+	app.Version = fmt.Sprintf("%s (%s)", version, commit)
 
 	return app
 }

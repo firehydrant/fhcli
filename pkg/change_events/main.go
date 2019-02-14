@@ -1,6 +1,7 @@
 package events
 
 import (
+	"os"
 	"strings"
 	"time"
 
@@ -24,12 +25,16 @@ type ChangeEvent struct {
 }
 
 func NewChangeEvent() ChangeEvent {
-	return ChangeEvent{
+	ce := ChangeEvent{
 		Identities: make(map[string]string),
 		Labels:     make(map[string]string),
 		StartsAt:   time.Now(),
 		EndsAt:     time.Now(),
 	}
+
+	ce.Labels["hostname"] = os.Getenv("HOSTNAME")
+
+	return ce
 }
 
 func (ce *ChangeEvent) identitiesToAPI() []*models.PostV1ChangesEventsChangeIdentitiesItems0 {
