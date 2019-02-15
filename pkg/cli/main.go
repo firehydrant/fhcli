@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	apiclient "github.com/firehydrant/fhcli/pkg/api_client"
+	"github.com/firehydrant/api-client-go/fhclient"
 	"github.com/urfave/cli"
 )
 
@@ -76,20 +76,20 @@ func NewApp(commit string, version string) *cli.App {
 	return app
 }
 
-func NewApiClient(c *cli.Context) (apiclient.ApiClient, error) {
-	config := apiclient.Config{
+func NewApiClient(c *cli.Context) (fhclient.ApiClient, error) {
+	config := fhclient.Config{
 		ApiHost: c.GlobalString("api-host"),
 		ApiKey:  c.GlobalString("api-key"),
 		Debug:   c.GlobalBool("debug"),
 	}
 
 	if len(config.ApiHost) == 0 {
-		return apiclient.ApiClient{}, errors.New("Invalid or no API host provided")
+		return fhclient.ApiClient{}, errors.New("Invalid or no API host provided")
 	}
 
 	if len(config.ApiKey) == 0 {
-		return apiclient.ApiClient{}, errors.New("Invalid or no API key provided")
+		return fhclient.ApiClient{}, errors.New("Invalid or no API key provided")
 	}
 
-	return apiclient.NewApiClient(config), nil
+	return fhclient.NewApiClient(config), nil
 }

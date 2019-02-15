@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
-	changeevents "github.com/firehydrant/fhcli/pkg/change_events"
+	"github.com/firehydrant/api-client-go/client/changes"
+	"github.com/firehydrant/api-client-go/fhclient"
+	"github.com/firehydrant/api-client-go/models"
+	"github.com/go-openapi/strfmt"
 	"github.com/urfave/cli"
 )
 
@@ -22,15 +25,18 @@ func executeCmd(c *cli.Context) error {
 		return errors.New("No command passed")
 	}
 
-	ce := changeevents.NewChangeEvent()
-
-	ce.Summary = strings.Join(c.Args(), " ")
-	ce.Environment = c.String("environment")
-	ce.Service = c.String("service")
-	ce.RawIdentities = c.String("identities")
-	ce.RawLabels = c.String("labels")
-
+	params := changes.NewPostV1ChangesEventsParams()
 	command, flags := c.Args()[0], c.Args()[1:]
+
+	identities := fhclient.ParseKV(c.String("identities"))
+
+	params.V1ChangesEvents = &models.PostV1ChangesEvents{
+		Environments: fhclient.ParamToList(c.String("environment")),
+		Services:     fhclient.ParamToList(c.String("service")),
+		StartsAt:     strfmt.DateTime(time.Now()),
+		Summary:      &command,
+		Labels:       fhclient.ParseKV(c.String("labels")),
+	}
 
 	fmt.Println(fmt.Sprintf("Executing command %s with args %s", command, strings.Join(flags, " ")))
 	cmdExec := exec.Command(command, flags...)
@@ -38,25 +44,34 @@ func executeCmd(c *cli.Context) error {
 	// We don't actually want to capture this; pass it through to the calling shell
 	cmdExec.Stdout = os.Stdout
 	cmdExec.Stderr = os.Stderr
-	ce.StartsAt = time.Now()
-	err = cmdExec.Run()
-	duration := time.Since(ce.StartsAt) / time.Millisecond
-	ce.EndsAt = time.Now()
+	start := time.Now()
+
+	cErr := cmdExec.Run()
+
+	duration := time.Since(start) / time.Millisecond
+	params.V1ChangesEvents.EndsAt = strfmt.DateTime(time.Now())
+	params.V1ChangesEvents.StartsAt = strfmt.DateTime(start)
 
 	// getting the exit code is a pita so i'm not doing it yet
-	if err != nil {
-		ce.Identities["error"] = err.Error()
-		fmt.Println(fmt.Sprintf("Executed command, duration %dms, error: %s", duration, err))
+	if cErr != nil {
+		identities["error"] = err.Error()
+		fmt.Println(fmt.Sprintf("Executed command, duration %dms, error: %s", duration, cErr))
 	} else {
 		fmt.Println(fmt.Sprintf("Executed command, duration %dms", duration))
 	}
 
-	id, err := ce.Submit(client)
+	params.V1ChangesEvents.ChangeIdentities = fhclient.APIKVtoChangeIdentities(fhclient.MapToAPIKV(identities))
+	resp, err := client.Client.Changes.PostV1ChangesEvents(params, client.Auth)
+
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(fmt.Sprintf("Created event %s", id))
+	fmt.Println(fmt.Sprintf("Created change event %s", resp.Payload.ID))
+
+	if cErr != nil {
+		return cErr
+	}
 
 	return nil
 }

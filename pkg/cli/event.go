@@ -3,8 +3,12 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"time"
 
-	changeevents "github.com/firehydrant/fhcli/pkg/change_events"
+	"github.com/firehydrant/api-client-go/client/changes"
+	"github.com/firehydrant/api-client-go/fhclient"
+	"github.com/firehydrant/api-client-go/models"
+	"github.com/go-openapi/strfmt"
 	"github.com/urfave/cli"
 )
 
@@ -14,20 +18,27 @@ func eventCmd(c *cli.Context) error {
 		return err
 	}
 
-	ce := changeevents.NewChangeEvent()
+	params := changes.NewPostV1ChangesEventsParams()
+	summary := strings.Join(c.Args(), " ")
 
-	ce.Summary = strings.Join(c.Args(), " ")
-	ce.Environment = c.String("environment")
-	ce.Service = c.String("service")
-	ce.RawIdentities = c.String("identities")
-	ce.RawLabels = c.String("labels")
+	identities := fhclient.APIKVtoChangeIdentities(fhclient.MapToAPIKV(fhclient.ParseKV(c.String("identities"))))
 
-	id, err := ce.Submit(client)
+	params.V1ChangesEvents = &models.PostV1ChangesEvents{
+		Environments:     fhclient.ParamToList(c.String("environment")),
+		Services:         fhclient.ParamToList(c.String("service")),
+		StartsAt:         strfmt.DateTime(time.Now()),
+		EndsAt:           strfmt.DateTime(time.Now()),
+		Summary:          &summary,
+		ChangeIdentities: identities,
+		Labels:           fhclient.ParseKV(c.String("labels")),
+	}
+
+	resp, err := client.Client.Changes.PostV1ChangesEvents(params, client.Auth)
+
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(fmt.Sprintf("Created event %s", id))
-
+	fmt.Println(fmt.Sprintf("Created change event %s", resp.Payload.ID))
 	return nil
 }
