@@ -9,7 +9,7 @@ import (
 	"github.com/firehydrant/api-client-go/fhclient"
 	"github.com/firehydrant/api-client-go/models"
 	"github.com/go-openapi/strfmt"
-	"github.com/urfave/cli"
+	"gopkg.in/urfave/cli.v1"
 )
 
 func eventCmd(c *cli.Context) error {
