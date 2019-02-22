@@ -17,6 +17,7 @@ This client allows you to submit free-form change events to the FireHydrant API 
 ### Actions
 
 * `event` Submits a change event to the FH API
+* `exec` Executes a command and submits a corresponding change event to the FH API
 * `init` Configures the client for subsequent invocations
 
 ### Parameters
@@ -43,11 +44,19 @@ This client allows you to submit free-form change events to the FireHydrant API 
 
 ### Configuration file
 
-We also accept a YAML configuration file, found at `~/.fhcli` or passed in as a param or environment variable.
+We also accept a YAML configuration file, specified with `-config` or passed in as an environment variable. If none is specified, the following paths will be checked in order for a configuration file.
+
+* /etc/firehydrant.cfg
+* $HOME/firehydrant.cfg
+* /tmp/firehydrant.cfg
 
 ### Examples
 
 The following examples assume that `FH_API_KEY` is set in your environment.
 
     fhcli event --name "hourly reconciliation task" --environment "production" --duration=120ms
-    fhcli event --name "Build image" --environment "staging" --git-revision=a0b0c0d0 docker build .
+    fhcli event --name "Job run" --environment "staging" --identities git=git@github.com/firehydrant/myrepo:a0b0c0d0
+    fhcli exec --name "Job run" --environment "staging" --identities git=git@github.com/firehydrant/myrepo:a0b0c0d0 docker build .
+
+To configure firehydrant and write a config file (defaults to /tmp/firehydrant.cfg) for subsequent invocations of the tool:
+    fhcli --config /etc/firehydrant.cfg --apiKey fhb-a0b010 --identities git=git@github.com/firehydrant/fhcli:a0b0c0d0 --service myservice init
