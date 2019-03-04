@@ -3,6 +3,7 @@ jobs:
   release:
     docker:
       - image: circleci/golang:1.11
+    working_directory: /go/src/github.com/firehydrant/fhcli
     steps:
       - checkout
       - run: echo machine github.com > ~/.netrc
