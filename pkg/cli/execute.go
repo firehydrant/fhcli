@@ -27,6 +27,7 @@ func executeCmd(c *cli.Context) error {
 
 	params := changes.NewPostV1ChangesEventsParams()
 	command, flags := c.Args()[0], c.Args()[1:]
+	summary := strings.Join(c.Args(), " ")
 
 	identities := fhclient.ParseKV(c.String("identities"))
 
@@ -34,7 +35,7 @@ func executeCmd(c *cli.Context) error {
 		Environments: fhclient.ParamToList(c.String("environment")),
 		Services:     fhclient.ParamToList(c.String("service")),
 		StartsAt:     strfmt.DateTime(time.Now()),
-		Summary:      &command,
+		Summary:      &summary,
 		Labels:       fhclient.ParseKV(c.String("labels")),
 	}
 
