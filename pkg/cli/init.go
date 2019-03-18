@@ -9,13 +9,14 @@ import (
 )
 
 type configFile struct {
-	APIKey      string `yaml:"apiKey"`
-	APIHost     string `yaml:"apiHost"`
-	Debug       bool   `yaml:"debug"`
-	Identities  string `yaml:"identities"`
-	Labels      string `yaml:"labels"`
-	Environment string `yaml:"environment"`
-	Service     string `yaml:"service"`
+	APIKey       string `yaml:"apiKey"`
+	APIHost      string `yaml:"apiHost"`
+	Debug        bool   `yaml:"debug"`
+	IgnoreErrors bool   `yaml:"ignoreErrors"`
+	Identities   string `yaml:"identities"`
+	Labels       string `yaml:"labels"`
+	Environment  string `yaml:"environment"`
+	Service      string `yaml:"service"`
 }
 
 func initCmd(c *cli.Context) error {
@@ -35,6 +36,7 @@ func initCmd(c *cli.Context) error {
 	}
 
 	config.Debug = c.GlobalBool("debug")
+	config.IgnoreErrors = c.GlobalBool("ignoreErrors")
 
 	if len(c.String("identities")) > 0 {
 		config.Identities = c.String("identities")

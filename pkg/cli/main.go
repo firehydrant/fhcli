@@ -149,3 +149,11 @@ func parseConfigFile(c *cli.Context) error {
 
 	return nil
 }
+
+func handleError(c *cli.Context, err error) error {
+	fmt.Println(err.Error())
+	if c.GlobalBool("ignoreErrors") {
+		return nil
+	}
+	return err
+}

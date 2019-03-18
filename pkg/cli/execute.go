@@ -65,13 +65,13 @@ func executeCmd(c *cli.Context) error {
 	resp, err := client.Client.Changes.PostV1ChangesEvents(params, client.Auth)
 
 	if err != nil {
-		return err
+		return handleError(c, err)
 	}
 
 	fmt.Println(fmt.Sprintf("Created change event %s", resp.Payload.ID))
 
 	if cErr != nil {
-		return cErr
+		return handleError(c, cErr)
 	}
 
 	return nil
