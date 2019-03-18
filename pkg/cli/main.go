@@ -114,7 +114,7 @@ func NewApiClient(c *cli.Context) (fhclient.ApiClient, error) {
 
 func parseConfigFile(c *cli.Context) error {
 	// Ignore the empty or missing configuration file if we're creating one
-	if c.Args()[0] == "init" {
+	if len(c.Args()) == 0 || c.Args()[0] == "init" {
 		return nil
 	}
 
