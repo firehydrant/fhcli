@@ -151,9 +151,11 @@ func parseConfigFile(c *cli.Context) error {
 }
 
 func handleError(c *cli.Context, err error) error {
-	fmt.Println(err.Error())
+	fmt.Printf("An error has occurred (%s), ignoreErrors is set so exit code will be 0\n", err.Error())
+
 	if c.GlobalBool("ignoreErrors") {
 		return nil
 	}
+
 	return err
 }
