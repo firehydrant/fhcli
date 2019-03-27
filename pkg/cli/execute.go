@@ -55,7 +55,7 @@ func executeCmd(c *cli.Context) error {
 
 	// getting the exit code is a pita so i'm not doing it yet
 	if cErr != nil {
-		identities["error"] = err.Error()
+		identities["error"] = cErr.Error()
 		fmt.Println(fmt.Sprintf("Executed command, duration %dms, error: %s", duration, cErr))
 	} else {
 		fmt.Println(fmt.Sprintf("Executed command, duration %dms", duration))
