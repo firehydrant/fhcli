@@ -1,4 +1,4 @@
-# FH CLI
+# FireHydrant CLI (fhcli)
 
 This client allows you to submit free-form change events to the FireHydrant API from your infrastructure.
 
@@ -22,25 +22,17 @@ This client allows you to submit free-form change events to the FireHydrant API 
 
 ### Parameters
 
-* Environment Name `--environment`
-* Service `--service`
-* API Key `--api-key`
-* Event name `--name`
-* Payload `--payload` 
-* Duration `--duration`
-* Config file `--config`
-* Identity `--identity`
-* Git Revision `--revision`
-  If the `fhcli` tool is invoked in a git repository this will automatically be set.
+* Environment Name `--environment` `FH_ENVIRONMENT`
+* Service `--service` `FH_SERVICE`
+* API Key `--api-key` `FH_API_KEY`
+* Config file `--config` `FH_CONFIG_FILE`
+* Identities `--identities` `FH_IDENTITIES`
+* Event name
+_or_
 * Command
-  This command is run in a subshell and is automatically instrumented with a duration/exit code. The exit code returned by fhcli is that of the command.
+  This command is run in a subshell, automatically instrumented with a duration and the result is submitted to the FH API
 
 ### Environment Variables
-
-* `FH_ENVIRONMENT_NAME`
-* `FH_COMPONENT`
-* `FH_API_KEY`
-* `FH_EVENT_NAME`
 
 ### Configuration file
 
@@ -54,9 +46,9 @@ We also accept a YAML configuration file, specified with `-config` or passed in 
 
 The following examples assume that `FH_API_KEY` is set in your environment.
 
-    fhcli event --name "hourly reconciliation task" --environment "production" --duration=120ms
-    fhcli event --name "Job run" --environment "staging" --identities git=git@github.com/firehydrant/myrepo:a0b0c0d0
-    fhcli exec --name "Job run" --environment "staging" --identities git=git@github.com/firehydrant/myrepo:a0b0c0d0 docker build .
+    fhcli event --environment "production" "hourly reconciliation task" 
+    fhcli event --environment "staging" --identities git=git@github.com/firehydrant/myrepo:a0b0c0d0 "CI build succeeded"
+    fhcli exec --environment "staging" --identities revision=a0a0a0 -- docker build .
 
 To configure firehydrant and write a config file (defaults to /tmp/firehydrant.cfg) for subsequent invocations of the tool:
-    fhcli --config /etc/firehydrant.cfg --apiKey fhb-a0b010 --identities git=git@github.com/firehydrant/fhcli:a0b0c0d0 --service myservice init
+    fhcli --config /etc/firehydrant.cfg --apiKey fhb-a0b010 --environment=production --service=monolith init

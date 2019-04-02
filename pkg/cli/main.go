@@ -14,7 +14,7 @@ import (
 var sharedFlags = []cli.Flag{
 	altsrc.NewStringFlag(cli.StringFlag{
 		Name:   "identities",
-		Usage:  "identities for the event, comma separated. example: image=us.gcr.io/firehydrant/rails:abcdef0",
+		Usage:  "identities for the event, comma separated. example: image=quay.io/firehydrant/rails:abcdef0",
 		EnvVar: "FH_IDENTITIES",
 	}),
 	altsrc.NewStringFlag(cli.StringFlag{
