@@ -24,7 +24,7 @@ This client allows you to submit free-form change events to the FireHydrant API 
 
 * Environment Name `--environment` `FH_ENVIRONMENT`
 * Service `--service` `FH_SERVICE`
-* API Key `--api-key` `FH_API_KEY`
+* API Key `--apiKey` `FH_API_KEY`
 * Config file `--config` `FH_CONFIG_FILE`
 * Identities `--identities` `FH_IDENTITIES`
 * Event name
