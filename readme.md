@@ -51,4 +51,5 @@ The following examples assume that `FH_API_KEY` is set in your environment.
     fhcli exec --environment "staging" --identities revision=a0a0a0 -- docker build .
 
 To configure firehydrant and write a config file (defaults to /tmp/firehydrant.cfg) for subsequent invocations of the tool:
+
     fhcli --config /etc/firehydrant.cfg --apiKey fhb-a0b010 --environment=production --service=monolith init
