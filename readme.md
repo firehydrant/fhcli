@@ -1,6 +1,14 @@
-# FireHydrant CLI (fhcli)
+<h1 align="center">
+  <img src="https://static.firehydrant.io/marketing/FH_logomark_orangeRGB.png" width="124px"/><br/>
+ FireHydrant CLI (fhcli)
+</h1>
 
-This client allows you to submit free-form change events to the FireHydrant API from your infrastructure.
+<p align="center">
+    <em>This client allows you to submit free-form change events to the FireHydrant API from your infrastructure.</em>
+</p>
+
+
+---
 
 ## Example Events
 * Deploys
