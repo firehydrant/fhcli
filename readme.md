@@ -1,6 +1,6 @@
 # FireHydrant CLI (fhcli)
 
-This client allows you to submit free-form change events to the FireHydrant API from your infrastructure.
+This client allows you to submit free-form change events to the FireHydrant API from your infrastructure. When incidents are opened on FireHydrant, recent change events will be automatically suggested to the responding team.
 
 ## Example Events
 * Deploys
@@ -9,6 +9,18 @@ This client allows you to submit free-form change events to the FireHydrant API 
 * Cronjobs
 
 ## Installation
+
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/firehydrant/fhcli?display_name=release)
+
+New tags automatically create a release using [goreleaser](https://goreleaser.com/) and can be found on the [releases page](https://github.com/firehydrant/fhcli/releases) of this repository.
+
+Our releases follow the standard format of `fhcli_{version}_{os}_{arch}.tar.gz` - To grab the latest on your CI environment (as an example), you can run something like:
+
+```
+$ cd /usr/local/bin
+$ wget -c https://github.com/firehydrant/fhcli/releases/latest/download/fhcli_0.0.14_linux_arm64.tar.gz -O - | tar -xz
+$ fhcli --version
+```
 
 ## Usage
 
@@ -46,7 +58,7 @@ We also accept a YAML configuration file, specified with `-config` or passed in 
 
 The following examples assume that `FH_API_KEY` is set in your environment.
 
-    fhcli event --environment "production" "hourly reconciliation task" 
+    fhcli event --environment "production" "hourly reconciliation task"
     fhcli event --environment "staging" --identities git=git@github.com/firehydrant/myrepo:a0b0c0d0 "CI build succeeded"
     fhcli execute --environment "staging" --identities revision=a0a0a0 -- docker build .
 
