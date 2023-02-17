@@ -17,7 +17,7 @@ This client allows you to submit free-form change events to the FireHydrant API 
 ### Actions
 
 * `event` Submits a change event to the FH API
-* `exec` Executes a command and submits a corresponding change event to the FH API
+* `execute` Executes a command and submits a corresponding change event to the FH API
 * `init` Configures the client for subsequent invocations
 
 ### Parameters
@@ -48,7 +48,7 @@ The following examples assume that `FH_API_KEY` is set in your environment.
 
     fhcli event --environment "production" "hourly reconciliation task" 
     fhcli event --environment "staging" --identities git=git@github.com/firehydrant/myrepo:a0b0c0d0 "CI build succeeded"
-    fhcli exec --environment "staging" --identities revision=a0a0a0 -- docker build .
+    fhcli execute --environment "staging" --identities revision=a0a0a0 -- docker build .
 
 To configure firehydrant and write a config file (defaults to /tmp/firehydrant.cfg) for subsequent invocations of the tool:
 
