@@ -1,8 +1,8 @@
-version: 2
+version: 2.1
 jobs:
   release:
     docker:
-      - image: circleci/golang:1.11
+      - image: circleci/golang:1.24.1
     working_directory: /go/src/github.com/firehydrant/fhcli
     steps:
       - checkout
