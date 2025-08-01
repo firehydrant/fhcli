@@ -23,7 +23,7 @@ func eventCmd(c *cli.Context) error {
 
 	identities := fhclient.APIKVtoChangeIdentities(fhclient.MapToAPIKV(fhclient.ParseKV(c.String("identities"))))
 
-	params.V1ChangesEvents = &models.PostV1ChangesEvents{
+	params.PostV1ChangesEvents = &models.PostV1ChangesEvents{
 		Environments:     fhclient.ParamToList(c.String("environment")),
 		Services:         fhclient.ParamToList(c.String("service")),
 		StartsAt:         strfmt.DateTime(time.Now()),

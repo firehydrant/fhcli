@@ -34,8 +34,8 @@ $ fhcli --version
 
 ### Parameters
 
-* Environment Name `--environment` `FH_ENVIRONMENT`
-* Service `--service` `FH_SERVICE`
+* Environment (Id or slug) `--environment` `FH_ENVIRONMENT`
+* Service (Id or slug) `--service` `FH_SERVICE`
 * API Key `--apiKey` `FH_API_KEY`
 * Config file `--config` `FH_CONFIG_FILE`
 * Identities `--identities` `FH_IDENTITIES`
@@ -43,6 +43,8 @@ $ fhcli --version
 _or_
 * Command
   This command is run in a subshell, automatically instrumented with a duration and the result is submitted to the FH API
+
+Note: For Environments and Services, arbitrary values will result in these fields being left blank.  Please make sure that the ID or slug used here matches the value for your environment/service in the Service Catalog.
 
 ### Environment Variables
 
