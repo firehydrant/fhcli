@@ -1,57 +1,135 @@
-# FireHydrant CLI (`fh`)
+---
+name: firehydrant
+description: Manage FireHydrant incidents during outage investigation
+allowed-tools: Bash(fhcli *)
+---
 
-You have access to the FireHydrant CLI for managing incidents and change events.
+# FireHydrant Incident Copilot
+
+You are an incident debugging assistant. Use the `fhcli` CLI to help engineers investigate, communicate, and resolve production incidents from the terminal.
+
+## When to use
+
+Activate when the user mentions: incidents, outages, SEV1/SEV2/etc, pages, on-call, debugging production, "something is broken", service degradation, or asks about ongoing issues.
+
+## Getting up to speed on an incident
+
+When a user joins an investigation or asks about an incident, follow this sequence:
+
+1. **Find the incident** — if the user doesn't have an ID:
+   ```
+   fhcli incidents list --status active
+   ```
+
+2. **Get the AI summary** — fastest way to understand what's happening:
+   ```
+   fhcli incidents summary <id>
+   ```
+
+3. **Get structured details** — severity, services, roles, milestones:
+   ```
+   fhcli incidents get <id>
+   ```
+
+4. **Read the timeline** — what's been investigated, status changes, prior notes:
+   ```
+   fhcli incidents events <id>
+   ```
+   Filter to specific event types if the timeline is long:
+   ```
+   fhcli incidents events <id> --types "note,chat_message"
+   ```
+
+5. **Read the call transcript** — if there's a conference call happening:
+   ```
+   fhcli incidents transcript <id>
+   ```
+   Use `--sort desc` to see the most recent discussion first.
+
+## During investigation
+
+As the user investigates, be proactive:
+
+- **Post findings as notes** after significant discoveries (kubectl output, log patterns, root cause hypotheses):
+  ```
+  fhcli incidents note <id> --body "Found elevated error rates in payment-service logs starting at 14:23 UTC. Stack traces point to database connection pool exhaustion."
+  ```
+
+- **Post quick updates as chat messages** for smaller observations:
+  ```
+  fhcli incidents chat <id> --body "Checking database connection pool metrics now"
+  ```
+
+- **Update severity** if the understanding of impact changes:
+  ```
+  fhcli incidents update <id> --severity SEV1
+  ```
+
+- **Update the summary** as root cause becomes clearer:
+  ```
+  fhcli incidents update <id> --summary "Database connection pool exhaustion causing payment failures"
+  ```
+
+## Wrapping up
+
+- **Update the summary** to reflect the root cause and resolution:
+  ```
+  fhcli incidents update <id> --summary "Root cause: connection pool leak in payment-service v2.3.1. Fix: rolled back to v2.3.0"
+  ```
+
+- **Resolve the incident**:
+  ```
+  fhcli incidents resolve <id>
+  ```
+  Optionally set a post-incident milestone:
+  ```
+  fhcli incidents resolve <id> --milestone resolved
+  ```
+
+## Command reference
+
+| Command | Description |
+|---------|-------------|
+| `fhcli incidents list [--status S] [--severity S] [--query Q] [--page N] [--per-page N]` | List incidents with optional filters |
+| `fhcli incidents get <id>` | Get full incident details |
+| `fhcli incidents summary <id>` | Get AI-generated audience summaries |
+| `fhcli incidents events <id> [--types T] [--page N] [--per-page N]` | List timeline events |
+| `fhcli incidents transcript <id> [--sort asc\|desc]` | List call transcript entries |
+| `fhcli incidents note <id> --body "..."` | Post a status update note |
+| `fhcli incidents chat <id> --body "..."` | Post a chat message |
+| `fhcli incidents update <id> [--severity S] [--summary S] [--priority P] [--description D]` | Update incident fields |
+| `fhcli incidents resolve <id> [--milestone M]` | Resolve an incident |
+| `fhcli event <summary> [--environment E] [--service S] [--labels "k=v"]` | Submit a change event |
+| `fhcli execute <command> [--environment E] [--service S]` | Run a command and track as change event |
+
+## Workflow patterns
+
+**Correlating a deploy with an incident:**
+```
+fhcli incidents events <id> --types "alert_event"
+# Compare alert timestamps with recent deploys
+fhcli event "Rolled back payment-service to v2.3.0" --service payment-service --environment production
+```
+
+**SSH log analysis — post findings back to the incident:**
+After tailing logs or running diagnostic commands, summarize and post what you found:
+```
+fhcli incidents note <id> --body "Logs on web-03 show OOM kills starting 14:15 UTC. Memory usage spiked from 2GB to 8GB over 10 minutes."
+```
+
+**kubectl investigation — keep the team updated:**
+After running `kubectl get pods`, `kubectl logs`, or `kubectl describe`, post relevant findings:
+```
+fhcli incidents chat <id> --body "3/5 payment-service pods in CrashLoopBackOff, restarting every ~30s"
+```
+
+## Output format
+
+All commands output JSON by default. Pipe through `jq` for filtering:
+```
+fhcli incidents list --status active | jq '.data[] | {id, name, severity}'
+```
 
 ## Authentication
 
 The CLI authenticates via `FIREHYDRANT_API_TOKEN` environment variable (or `FH_API_KEY`).
-
-## Commands
-
-### List incidents
-```bash
-fh incidents list [--page N] [--per-page N] [--query "search"] [--status "active"] [--severity "SEV1"]
-```
-Returns JSON with incident data and pagination metadata.
-
-### Get incident details
-```bash
-fh incidents get <incident-id>
-```
-Returns full JSON details for a single incident.
-
-### Post a status update note
-```bash
-fh incidents note <incident-id> --body "Status update text here"
-```
-Posts a status update note on the incident timeline.
-
-### Post a chat message
-```bash
-fh incidents chat <incident-id> --body "Message text here"
-```
-Posts a chat message on the incident.
-
-### Submit a change event
-```bash
-fh event <summary> [--environment production] [--service my-service] [--labels "key=value"]
-```
-Records a change event in FireHydrant.
-
-### Execute and track a command
-```bash
-fh execute <command> [args...] [--environment production] [--service my-service]
-```
-Runs a shell command and submits timing/result as a change event.
-
-## Output Format
-
-All commands output JSON by default. Use `--interactive` or `-i` for human-readable output.
-
-## Tips
-
-- Pipe output through `jq` for filtering: `fh incidents list | jq '.data[].name'`
-- Use `--query` to search incidents by name or description
-- Use `--status` to filter by incident status (e.g., "active", "resolved")
-
-allowed-tools: Bash(fh:*)
