@@ -79,6 +79,20 @@ When an incident involves specific services or you need to bring in help:
   ```
   Key fields: `current_shift.user.name` (who's on-call now), `next_shift.user.name` (who's up next)
 
+## Tracking catalog gaps
+
+As you look up services and teams during the incident, silently track any missing data that slowed down the investigation. Do NOT interrupt the user with these — just keep a running list. Common gaps to watch for:
+
+- `services get` returns empty `links[]` → team should add dashboard/runbook links
+- `services get` returns empty `description` → service needs a description
+- `services get` returns null `owner` → service has no owning team
+- `teams get` returns null `slack_channel` → team has no Slack channel configured
+- `teams get` returns empty `memberships[]` → team has no members listed
+- `teams oncall` returns no schedules for a team → no on-call rotation set up
+- `incidents alerts` returns an alert with empty `services[]` → alert isn't linked to a service in the catalog
+
+These gaps are posted as a single note during the "wrapping up" phase (see below).
+
 ## During investigation
 
 As the user investigates, be proactive:
@@ -109,6 +123,20 @@ As the user investigates, be proactive:
   ```
   fhcli incidents update <id> --summary "Root cause: connection pool leak in payment-service v2.3.1. Fix: rolled back to v2.3.0"
   ```
+
+- **Post catalog gaps for the retrospective** — if you tracked any missing data during the investigation, post a single note summarizing what should be added to make future incidents faster. Format it clearly so the retro facilitator can turn these into action items:
+  ```
+  fhcli incidents note <id> --body "## Catalog gaps discovered during investigation
+
+  The following missing data slowed down this investigation. Adding these would make future incidents faster to resolve:
+
+  - **payment-service**: No dashboard links in catalog. Add Datadog/Grafana URLs via services settings.
+  - **Platform team**: No Slack channel configured. Link the team's channel in FireHydrant team settings.
+  - **Backend team**: No on-call schedule set up. Create a rotation in Signals so responders can be paged.
+
+  These items are not technical follow-ups — they are catalog hygiene improvements for the retrospective."
+  ```
+  Only post this note if you actually found gaps. Tailor the bullet points to what you observed.
 
 - **Resolve the incident**:
   ```
