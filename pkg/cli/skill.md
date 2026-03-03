@@ -55,26 +55,29 @@ When a user joins an investigation or asks about an incident, follow this sequen
 
 When an incident involves specific services or you need to bring in help:
 
-- **Look up a service** — get dashboard links, runbooks, owner team, environments:
+- **Look up a service** — returns dashboard links (Datadog, Grafana, etc.), runbooks, owner team, and environments. Extract URLs from the `links` array in the response to give the user direct dashboard access:
   ```
   fhcli services get <service-id>
   ```
+  Key fields: `links[].href_url` (dashboards, runbooks), `owner.name` (owning team), `owner.id` (use with teams get)
 
 - **Search services** by name or description:
   ```
   fhcli services list --query "payment"
   ```
 
-- **Look up a team** — get members, owned services, Slack channel:
+- **Look up a team** — returns members, owned services, and the team's Slack channel. Use `slack_channel.name` to tell the user where to coordinate:
   ```
   fhcli teams get <team-id>
   ```
+  Key fields: `slack_channel.name` (where to reach the team), `memberships[].user` (team members), `owned_services` (what they own)
 
 - **Find who's on-call** — see current and next shift for all schedules, or filter by team:
   ```
   fhcli teams oncall
   fhcli teams oncall --team-id <team-id>
   ```
+  Key fields: `current_shift.user.name` (who's on-call now), `next_shift.user.name` (who's up next)
 
 ## During investigation
 
@@ -159,17 +162,21 @@ After running `kubectl get pods`, `kubectl logs`, or `kubectl describe`, post re
 fhcli incidents chat <id> --body "3/5 payment-service pods in CrashLoopBackOff, restarting every ~30s"
 ```
 
-**Pulling up service dashboards and runbooks:**
-When an alert mentions a service, look it up to find monitoring links and who owns it:
+**Alert → service dashboards → team Slack channel (full flow):**
+When you get an alert, trace it to the service and team to get actionable links:
 ```
+fhcli incidents alerts <id>
+# alert.services[] or alert.team_id tells you what's affected
 fhcli services get <service-id>
-# Response includes links (dashboards, runbooks), owner team, environments
+# links[].href_url has Datadog/Grafana dashboards — surface these to the user
+fhcli teams get <team-id>
+# slack_channel.name tells you where the team coordinates (e.g. #devnull)
 ```
 
 **Finding and paging the right on-call engineer:**
 ```
 fhcli teams oncall --team-id <team-id>
-# Shows current_shift.user (who's on-call now) and next_shift.user
+# current_shift.user.name is who's on-call now — suggest pinging them
 ```
 
 ## Output format
