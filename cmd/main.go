@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -11,11 +12,8 @@ var commit string
 var version string
 
 func main() {
-	app := cli.NewApp(commit, version)
-
-	err := app.Run(os.Args)
-	if err != nil {
+	cmd := cli.NewRootCmd(commit, version)
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
 		log.Fatal(err)
 	}
-
 }

@@ -1,162 +1,308 @@
 package cli
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
+	"strings"
 
-	"github.com/firehydrant/api-client-go/fhclient"
-	"gopkg.in/urfave/cli.v1"
-	"gopkg.in/urfave/cli.v1/altsrc"
+	firehydrantgosdk "github.com/firehydrant/firehydrant-go-sdk"
+	"github.com/firehydrant/firehydrant-go-sdk/models/components"
+	"github.com/urfave/cli/v3"
+	"gopkg.in/yaml.v2"
 )
 
-var sharedFlags = []cli.Flag{
-	altsrc.NewStringFlag(cli.StringFlag{
-		Name:   "identities",
-		Usage:  "identities for the event, comma separated. example: image=quay.io/firehydrant/rails:abcdef0",
-		EnvVar: "FH_IDENTITIES",
-	}),
-	altsrc.NewStringFlag(cli.StringFlag{
-		Name:   "labels",
-		Usage:  "labels for the event, comma separated. example: executor=jenkins",
-		EnvVar: "FH_LABELS",
-	}),
-	altsrc.NewStringFlag(cli.StringFlag{
-		Name:   "environment",
-		Usage:  "environment for the event, example: production",
-		EnvVar: "FH_ENVIRONMENT",
-	}),
-	altsrc.NewStringFlag(cli.StringFlag{
-		Name:   "service",
-		Usage:  "service for the event, example: rails-monolith",
-		EnvVar: "FH_SERVICE",
-	}),
-}
+type ctxKey string
 
-var flags = []cli.Flag{
-	altsrc.NewStringFlag(cli.StringFlag{
-		Name:   "apiKey",
-		Usage:  "firehydrant.io API Key",
-		EnvVar: "FH_API_KEY",
-	}),
-	altsrc.NewStringFlag(cli.StringFlag{
-		Name:   "apiHost",
-		Usage:  "firehydrant.io API hostname",
-		Value:  "api.firehydrant.io",
-		EnvVar: "FH_API_HOST",
-	}),
-	altsrc.NewBoolFlag(cli.BoolFlag{
-		Name:  "debug",
-		Usage: "Enable debug output for API calls",
-	}),
-	altsrc.NewBoolTFlag(cli.BoolTFlag{
-		Name:  "ignoreErrors",
-		Usage: "exit 0 on errors from FH API (default)",
-	}),
-	cli.StringFlag{
-		Name:   "config",
-		Usage:  "config file",
-		EnvVar: "FH_CONFIG_FILE",
+const sdkClientKey ctxKey = "sdkClient"
+
+var sharedFlags = []cli.Flag{
+	&cli.StringFlag{
+		Name:    "identities",
+		Usage:   "identities for the event, comma separated. example: image=quay.io/firehydrant/rails:abcdef0",
+		Sources: cli.EnvVars("FH_IDENTITIES"),
+	},
+	&cli.StringFlag{
+		Name:    "labels",
+		Usage:   "labels for the event, comma separated. example: executor=jenkins",
+		Sources: cli.EnvVars("FH_LABELS"),
+	},
+	&cli.StringFlag{
+		Name:    "environment",
+		Usage:   "environment for the event, example: production",
+		Sources: cli.EnvVars("FH_ENVIRONMENT"),
+	},
+	&cli.StringFlag{
+		Name:    "service",
+		Usage:   "service for the event, example: rails-monolith",
+		Sources: cli.EnvVars("FH_SERVICE"),
 	},
 }
 
-func NewApp(commit string, version string) *cli.App {
-	app := cli.NewApp()
-
-	app.Commands = []cli.Command{
-		{
-			Name:   "init",
-			Usage:  "write a config file to be used in future invocations of the FireHydrant CLI",
-			Action: initCmd,
-			Flags:  sharedFlags,
-		},
-		{
-			Name:   "event",
-			Usage:  "submit an event to the FireHydrant API",
-			Action: eventCmd,
-			Flags:  sharedFlags,
-			Before: parseConfigFile,
-		},
-		{
-			Name:   "execute",
-			Usage:  "execute a command and submit metrics to the FireHydrant API",
-			Action: executeCmd,
-			Flags:  sharedFlags,
-			Before: parseConfigFile,
-		},
-	}
-
-	app.Before = parseConfigFile
-	app.Flags = flags
-	app.Version = fmt.Sprintf("%s (%s)", version, commit)
-
-	return app
+var globalFlags = []cli.Flag{
+	&cli.StringFlag{
+		Name:    "token",
+		Aliases: []string{"apiKey"},
+		Usage:   "FireHydrant API token",
+		Sources: cli.EnvVars("FIREHYDRANT_API_TOKEN", "FH_API_KEY"),
+	},
+	&cli.StringFlag{
+		Name:    "api-host",
+		Aliases: []string{"apiHost"},
+		Usage:   "FireHydrant API hostname",
+		Value:   "https://api.firehydrant.io",
+		Sources: cli.EnvVars("FH_API_HOST"),
+	},
+	&cli.BoolFlag{
+		Name:  "debug",
+		Usage: "enable debug output for API calls",
+	},
+	&cli.BoolFlag{
+		Name:    "interactive",
+		Aliases: []string{"i"},
+		Usage:   "enable human-readable output instead of JSON",
+	},
+	&cli.BoolFlag{
+		Name:    "ignore-errors",
+		Aliases: []string{"ignoreErrors"},
+		Usage:   "exit 0 on errors from FH API",
+		Value:   true,
+	},
+	&cli.StringFlag{
+		Name:    "config",
+		Usage:   "config file path",
+		Sources: cli.EnvVars("FH_CONFIG_FILE"),
+	},
 }
 
-func NewApiClient(c *cli.Context) (fhclient.ApiClient, error) {
-	config := fhclient.Config{
-		ApiHost: c.GlobalString("apiHost"),
-		ApiKey:  c.GlobalString("apiKey"),
-		Debug:   c.GlobalBool("debug"),
+func NewRootCmd(commit, version string) *cli.Command {
+	cmd := &cli.Command{
+		Name:    "fhcli",
+		Usage:   "FireHydrant CLI",
+		Version: fmt.Sprintf("%s (%s)", version, commit),
+		Flags:   globalFlags,
+		Before:  rootBefore,
+		Commands: []*cli.Command{
+			newInitCmd(),
+			newEventCmd(),
+			newExecuteCmd(),
+			newIncidentsCmd(),
+			newInstallCmd(),
+		},
 	}
 
-	if len(config.ApiHost) == 0 {
-		return fhclient.ApiClient{}, errors.New("Invalid or no API host provided")
-	}
-
-	if len(config.ApiKey) == 0 {
-		return fhclient.ApiClient{}, errors.New("Invalid or no API key provided")
-	}
-
-	return fhclient.NewApiClient(config), nil
+	return cmd
 }
 
-func parseConfigFile(c *cli.Context) error {
-	// Ignore the empty or missing configuration file if we're creating one
-	if len(c.Args()) == 0 || c.Args()[0] == "init" {
-		return nil
+func rootBefore(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+	// Load config file values
+	loadConfigFile(cmd)
+
+	// Skip SDK client creation for commands that don't need it
+	cmdName := ""
+	if cmd.Args().Present() {
+		cmdName = cmd.Args().First()
+	}
+	if cmdName == "init" || cmdName == "install" {
+		return ctx, nil
 	}
 
+	token := cmd.String("token")
+	if token == "" {
+		return ctx, nil
+	}
+
+	opts := []firehydrantgosdk.SDKOption{
+		firehydrantgosdk.WithSecurity(components.Security{
+			APIKey: token,
+		}),
+	}
+
+	apiHost := cmd.String("api-host")
+	if apiHost != "" && apiHost != "https://api.firehydrant.io" {
+		// Ensure the host has a scheme
+		if !strings.HasPrefix(apiHost, "http://") && !strings.HasPrefix(apiHost, "https://") {
+			apiHost = "https://" + apiHost
+		}
+		opts = append(opts, firehydrantgosdk.WithServerURL(apiHost))
+	}
+
+	client := firehydrantgosdk.New(opts...)
+	ctx = context.WithValue(ctx, sdkClientKey, client)
+
+	return ctx, nil
+}
+
+func getClient(ctx context.Context) (*firehydrantgosdk.FireHydrant, error) {
+	client, ok := ctx.Value(sdkClientKey).(*firehydrantgosdk.FireHydrant)
+	if !ok || client == nil {
+		return nil, errors.New("API token is required. Set --token flag, FIREHYDRANT_API_TOKEN env var, or configure a config file")
+	}
+	return client, nil
+}
+
+// loadConfigFile reads the YAML config file and applies values for flags that are at their zero value.
+func loadConfigFile(cmd *cli.Command) {
 	paths := []string{
-		c.GlobalString("config"),
+		cmd.String("config"),
 		path.Join("/etc", "firehydrant.cfg"),
 		path.Join(os.Getenv("HOME"), "firehydrant.cfg"),
 		path.Join("/tmp", "firehydrant.cfg"),
 	}
 
-	p := ""
-	for _, pa := range paths {
-		if _, err := os.Stat(pa); err == nil {
-			p = pa
+	var cfgPath string
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			cfgPath = p
 			break
 		}
 	}
 
-	if p != "" {
-		s, err := altsrc.NewYamlSourceFromFile(p)
-		if err != nil {
-			return err
-		}
-
-		err = altsrc.ApplyInputSourceValues(c, s, flags)
-		if err != nil {
-			return nil
-		}
-
-		return altsrc.ApplyInputSourceValues(c, s, sharedFlags)
+	if cfgPath == "" {
+		return
 	}
 
-	return nil
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return
+	}
+
+	var cfg map[string]interface{}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return
+	}
+
+	// Map config file keys to flag names
+	keyMap := map[string]string{
+		"apiKey":      "token",
+		"apiHost":     "api-host",
+		"debug":       "debug",
+		"identities":  "identities",
+		"labels":      "labels",
+		"environment": "environment",
+		"service":     "service",
+	}
+
+	for cfgKey, flagName := range keyMap {
+		val, ok := cfg[cfgKey]
+		if !ok || val == nil {
+			continue
+		}
+		// Only apply config values if the flag hasn't been set via CLI or env
+		if cmd.IsSet(flagName) {
+			continue
+		}
+		// We can't easily set flag values after parsing in v3,
+		// so we set environment variables as a fallback mechanism
+		switch v := val.(type) {
+		case string:
+			if v != "" {
+				os.Setenv(envForFlag(flagName), v)
+			}
+		case bool:
+			if v {
+				os.Setenv(envForFlag(flagName), "true")
+			}
+		}
+	}
 }
 
-func handleError(c *cli.Context, err error) error {
-	fmt.Println(err.Error())
+// envForFlag returns the primary environment variable name for a flag.
+func envForFlag(flagName string) string {
+	switch flagName {
+	case "token":
+		return "FH_API_KEY"
+	case "api-host":
+		return "FH_API_HOST"
+	case "identities":
+		return "FH_IDENTITIES"
+	case "labels":
+		return "FH_LABELS"
+	case "environment":
+		return "FH_ENVIRONMENT"
+	case "service":
+		return "FH_SERVICE"
+	default:
+		return ""
+	}
+}
 
-	if c.GlobalBool("ignoreErrors") {
-		fmt.Println("ignoreErrors is set so exit code will be 0")
+// outputJSON writes JSON-encoded data to the given writer.
+func outputJSON(w io.Writer, data any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(data)
+}
+
+// outputResult writes data as JSON to stdout, or human-readable if --interactive is set.
+func outputResult(cmd *cli.Command, data any) error {
+	if cmd.Bool("interactive") {
+		return outputInteractive(os.Stdout, data)
+	}
+	return outputJSON(os.Stdout, data)
+}
+
+// outputInteractive writes a simple human-readable representation.
+func outputInteractive(w io.Writer, data any) error {
+	// Marshal to JSON then unmarshal to a generic structure for pretty printing
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w, string(b))
+	return err
+}
+
+// handleError formats an error appropriately and respects --ignore-errors.
+func handleError(cmd *cli.Command, err error) error {
+	if cmd.Bool("interactive") {
+		fmt.Fprintln(os.Stderr, "Error:", err.Error())
+	} else {
+		outputJSON(os.Stderr, map[string]string{"error": err.Error()})
+	}
+
+	if cmd.Bool("ignore-errors") {
 		return nil
 	}
 
 	return err
+}
+
+// parseKV parses a "k=v,k2=v2" string into a map.
+func parseKV(s string) map[string]string {
+	result := make(map[string]string)
+	if s == "" {
+		return result
+	}
+	pairs := strings.Split(s, ",")
+	for _, pair := range pairs {
+		kv := strings.SplitN(pair, "=", 2)
+		if len(kv) == 2 {
+			result[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		}
+	}
+	return result
+}
+
+// paramToList splits a comma-separated string into a list of trimmed strings.
+func paramToList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
