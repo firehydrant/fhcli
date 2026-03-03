@@ -91,6 +91,8 @@ func NewRootCmd(commit, version string) *cli.Command {
 			newEventCmd(),
 			newExecuteCmd(),
 			newIncidentsCmd(),
+			newServicesCmd(),
+			newTeamsCmd(),
 			newInstallCmd(),
 		},
 	}

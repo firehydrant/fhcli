@@ -51,6 +51,31 @@ When a user joins an investigation or asks about an incident, follow this sequen
    ```
    Use `--sort desc` to see the most recent discussion first.
 
+## Looking up services and teams
+
+When an incident involves specific services or you need to bring in help:
+
+- **Look up a service** — get dashboard links, runbooks, owner team, environments:
+  ```
+  fhcli services get <service-id>
+  ```
+
+- **Search services** by name or description:
+  ```
+  fhcli services list --query "payment"
+  ```
+
+- **Look up a team** — get members, owned services, Slack channel:
+  ```
+  fhcli teams get <team-id>
+  ```
+
+- **Find who's on-call** — see current and next shift for all schedules, or filter by team:
+  ```
+  fhcli teams oncall
+  fhcli teams oncall --team-id <team-id>
+  ```
+
 ## During investigation
 
 As the user investigates, be proactive:
@@ -105,6 +130,11 @@ As the user investigates, be proactive:
 | `fhcli incidents chat <id> --body "..."` | Post a chat message |
 | `fhcli incidents update <id> [--severity S] [--summary S] [--priority P] [--description D]` | Update incident fields |
 | `fhcli incidents resolve <id> [--milestone M]` | Resolve an incident |
+| `fhcli services list [--query Q] [--page N] [--per-page N]` | List/search services |
+| `fhcli services get <id>` | Get service details, links, owner, environments |
+| `fhcli teams list [--query Q] [--page N] [--per-page N]` | List/search teams |
+| `fhcli teams get <id>` | Get team details, members, owned services |
+| `fhcli teams oncall [--team-id T]` | List on-call schedules with current/next shift |
 | `fhcli event <summary> [--environment E] [--service S] [--labels "k=v"]` | Submit a change event |
 | `fhcli execute <command> [--environment E] [--service S]` | Run a command and track as change event |
 
@@ -127,6 +157,19 @@ fhcli incidents note <id> --body "Logs on web-03 show OOM kills starting 14:15 U
 After running `kubectl get pods`, `kubectl logs`, or `kubectl describe`, post relevant findings:
 ```
 fhcli incidents chat <id> --body "3/5 payment-service pods in CrashLoopBackOff, restarting every ~30s"
+```
+
+**Pulling up service dashboards and runbooks:**
+When an alert mentions a service, look it up to find monitoring links and who owns it:
+```
+fhcli services get <service-id>
+# Response includes links (dashboards, runbooks), owner team, environments
+```
+
+**Finding and paging the right on-call engineer:**
+```
+fhcli teams oncall --team-id <team-id>
+# Shows current_shift.user (who's on-call now) and next_shift.user
 ```
 
 ## Output format
