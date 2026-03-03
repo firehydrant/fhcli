@@ -107,8 +107,9 @@ As the user investigates, be proactive:
   fhcli incidents chat <id> --body "Checking database connection pool metrics now"
   ```
 
-- **Update severity** if the understanding of impact changes:
+- **Severity changes require human approval** — never update severity on your own. If evidence suggests the severity should change, tell the user what you're seeing and recommend a level, but let them decide. Severity changes trigger escalations, pages, and status page updates.
   ```
+  # Only run this after the user explicitly confirms:
   fhcli incidents update <id> --severity SEV1
   ```
 
