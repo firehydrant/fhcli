@@ -77,6 +77,11 @@ func newIncidentsCmd() *cli.Command {
 				},
 			},
 			{
+				Name:   "alerts",
+				Usage:  "list alerts attached to an incident",
+				Action: incidentsAlertsCmd,
+			},
+			{
 				Name:   "summary",
 				Usage:  "get AI-generated audience summaries for an incident",
 				Action: incidentsSummaryCmd,
@@ -240,6 +245,25 @@ func incidentsChatCmd(ctx context.Context, cmd *cli.Command) error {
 	resp, err := client.Incidents.CreateIncidentChatMessage(ctx, incidentID, components.CreateIncidentChatMessage{
 		Body: body,
 	})
+	if err != nil {
+		return handleError(cmd, err)
+	}
+
+	return outputResult(cmd, resp)
+}
+
+func incidentsAlertsCmd(ctx context.Context, cmd *cli.Command) error {
+	client, err := getClient(ctx)
+	if err != nil {
+		return handleError(cmd, err)
+	}
+
+	if cmd.NArg() < 1 {
+		return handleError(cmd, errors.New("incident ID is required"))
+	}
+	incidentID := cmd.Args().First()
+
+	resp, err := client.Alerts.ListIncidentAlerts(ctx, incidentID)
 	if err != nil {
 		return handleError(cmd, err)
 	}

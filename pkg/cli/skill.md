@@ -21,17 +21,22 @@ When a user joins an investigation or asks about an incident, follow this sequen
    fhcli incidents list --status active
    ```
 
-2. **Get the AI summary** — fastest way to understand what's happening:
+2. **Read the alerts** — the first thing a responder needs; shows what triggered the incident, source integration, affected services:
+   ```
+   fhcli incidents alerts <id>
+   ```
+
+3. **Get the AI summary** — fastest way to understand what's happening:
    ```
    fhcli incidents summary <id>
    ```
 
-3. **Get structured details** — severity, services, roles, milestones:
+4. **Get structured details** — severity, services, roles, milestones:
    ```
    fhcli incidents get <id>
    ```
 
-4. **Read the timeline** — what's been investigated, status changes, prior notes:
+5. **Read the timeline** — what's been investigated, status changes, prior notes:
    ```
    fhcli incidents events <id>
    ```
@@ -40,7 +45,7 @@ When a user joins an investigation or asks about an incident, follow this sequen
    fhcli incidents events <id> --types "note,chat_message"
    ```
 
-5. **Read the call transcript** — if there's a conference call happening:
+6. **Read the call transcript** — if there's a conference call happening:
    ```
    fhcli incidents transcript <id>
    ```
@@ -92,6 +97,7 @@ As the user investigates, be proactive:
 |---------|-------------|
 | `fhcli incidents list [--status S] [--severity S] [--query Q] [--page N] [--per-page N]` | List incidents with optional filters |
 | `fhcli incidents get <id>` | Get full incident details |
+| `fhcli incidents alerts <id>` | List alerts attached to the incident |
 | `fhcli incidents summary <id>` | Get AI-generated audience summaries |
 | `fhcli incidents events <id> [--types T] [--page N] [--per-page N]` | List timeline events |
 | `fhcli incidents transcript <id> [--sort asc\|desc]` | List call transcript entries |
