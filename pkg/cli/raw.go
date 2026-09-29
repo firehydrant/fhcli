@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,9 +26,12 @@ type rawClient struct {
 }
 
 func getRawClient(ctx context.Context) (*rawClient, error) {
+	if err, ok := ctx.Value(authErrKey).(error); ok {
+		return nil, err
+	}
 	client, ok := ctx.Value(rawClientKey).(*rawClient)
 	if !ok || client == nil {
-		return nil, errors.New("API token is required. Set --token flag, FIREHYDRANT_API_TOKEN env var, or configure a config file")
+		return nil, errNoCredentials
 	}
 	return client, nil
 }

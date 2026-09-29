@@ -13,6 +13,8 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("XDG_CONFIG_HOME", dir)
+	// Never read or write the developer's real Keychain login.
+	os.Setenv("FHCLI_TOKEN_STORE", "file")
 	// Keep the developer's credentials and host out of tests: a real token
 	// would make "no token" tests vacuous and could reach the real API.
 	for _, name := range []string{"FIREHYDRANT_API_TOKEN", "FH_API_KEY", "FH_API_HOST", "FH_CONFIG_FILE"} {

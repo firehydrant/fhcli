@@ -3,10 +3,8 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -45,40 +43,45 @@ var sharedFlags = []cli.Flag{
 	},
 }
 
-var globalFlags = []cli.Flag{
-	&cli.StringFlag{
-		Name:    "token",
-		Aliases: []string{"apiKey"},
-		Usage:   "FireHydrant API token",
-		Sources: cli.EnvVars("FIREHYDRANT_API_TOKEN", "FH_API_KEY"),
-	},
-	&cli.StringFlag{
-		Name:    "api-host",
-		Aliases: []string{"apiHost"},
-		Usage:   "FireHydrant API hostname",
-		Value:   defaultAPIHost,
-		Sources: cli.EnvVars("FH_API_HOST"),
-	},
-	&cli.BoolFlag{
-		Name:  "debug",
-		Usage: "enable debug output for API calls",
-	},
-	&cli.BoolFlag{
-		Name:    "interactive",
-		Aliases: []string{"i"},
-		Usage:   "enable human-readable output instead of JSON",
-	},
-	&cli.BoolFlag{
-		Name:    "ignore-errors",
-		Aliases: []string{"ignoreErrors"},
-		Usage:   "exit 0 on errors from FH API",
-		Value:   true,
-	},
-	&cli.StringFlag{
-		Name:    "config",
-		Usage:   "config file path",
-		Sources: cli.EnvVars("FH_CONFIG_FILE"),
-	},
+// newGlobalFlags returns fresh root flags. Each root command needs its own:
+// urfave/cli keeps parsed state on flag values, so sharing them across roots
+// (as tests do) would stop env var sources from being re-read.
+func newGlobalFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:    "token",
+			Aliases: []string{"apiKey"},
+			Usage:   "FireHydrant API token",
+			Sources: cli.EnvVars("FIREHYDRANT_API_TOKEN", "FH_API_KEY"),
+		},
+		&cli.StringFlag{
+			Name:    "api-host",
+			Aliases: []string{"apiHost"},
+			Usage:   "FireHydrant API hostname",
+			Value:   defaultAPIHost,
+			Sources: cli.EnvVars("FH_API_HOST"),
+		},
+		&cli.BoolFlag{
+			Name:  "debug",
+			Usage: "enable debug output for API calls",
+		},
+		&cli.BoolFlag{
+			Name:    "interactive",
+			Aliases: []string{"i"},
+			Usage:   "enable human-readable output instead of JSON",
+		},
+		&cli.BoolFlag{
+			Name:    "ignore-errors",
+			Aliases: []string{"ignoreErrors"},
+			Usage:   "exit 0 on errors from FH API",
+			Value:   true,
+		},
+		&cli.StringFlag{
+			Name:    "config",
+			Usage:   "config file path",
+			Sources: cli.EnvVars("FH_CONFIG_FILE"),
+		},
+	}
 }
 
 // NewRootCmd builds the CLI with the API spec from spec.Load.
@@ -92,7 +95,7 @@ func newRootCmd(commit, version string, sp *spec.Spec, specErr error) *cli.Comma
 		Name:    "fhcli",
 		Usage:   "FireHydrant CLI",
 		Version: fmt.Sprintf("%s (%s)", version, commit),
-		Flags:   globalFlags,
+		Flags:   newGlobalFlags(),
 		Before:  rootBefore,
 		Commands: []*cli.Command{
 			newInitCmd(),
@@ -113,36 +116,39 @@ func newRootCmd(commit, version string, sp *spec.Spec, specErr error) *cli.Comma
 func rootBefore(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 	// Load config file values
 	loadConfigFile(cmd)
+	sawUnauthorized.Store(false)
 
-	// Skip SDK client creation for commands that don't need it
+	// Skip auth for commands that don't call the API with it
 	cmdName := ""
 	if cmd.Args().Present() {
 		cmdName = cmd.Args().First()
 	}
-	if cmdName == "init" || cmdName == "install" || cmdName == "spec" {
+	switch cmdName {
+	case "init", "install", "spec", "login", "logout":
 		return ctx, nil
 	}
 
-	token := cmd.String("token")
-	if token == "" {
+	info, err := resolveAuth(ctx, cmd)
+	if err != nil {
+		// Reported by the command via getClient, so --ignore-errors still
+		// applies to event/execute.
+		return context.WithValue(ctx, authErrKey, err), nil
+	}
+	if info == nil {
 		return ctx, nil
 	}
 
 	opts := []firehydrantgosdk.SDKOption{
-		firehydrantgosdk.WithSecurity(components.Security{
-			APIKey: token,
-		}),
+		firehydrantgosdk.WithSecurity(components.Security{APIKey: info.header}),
+		firehydrantgosdk.WithClient(apiHTTPClient),
+	}
+	if info.apiHost != defaultAPIHost {
+		opts = append(opts, firehydrantgosdk.WithServerURL(info.apiHost))
 	}
 
-	apiHost := resolveAPIHost(cmd)
-	if apiHost != defaultAPIHost {
-		opts = append(opts, firehydrantgosdk.WithServerURL(apiHost))
-	}
-
-	client := firehydrantgosdk.New(opts...)
-	ctx = context.WithValue(ctx, sdkClientKey, client)
-	ctx = context.WithValue(ctx, rawClientKey, &rawClient{baseURL: apiHost, token: token, http: http.DefaultClient})
-
+	ctx = context.WithValue(ctx, authInfoKey, info)
+	ctx = context.WithValue(ctx, sdkClientKey, firehydrantgosdk.New(opts...))
+	ctx = context.WithValue(ctx, rawClientKey, &rawClient{baseURL: info.apiHost, token: info.header, http: apiHTTPClient})
 	return ctx, nil
 }
 
@@ -160,9 +166,12 @@ func resolveAPIHost(cmd *cli.Command) string {
 }
 
 func getClient(ctx context.Context) (*firehydrantgosdk.FireHydrant, error) {
+	if err, ok := ctx.Value(authErrKey).(error); ok {
+		return nil, err
+	}
 	client, ok := ctx.Value(sdkClientKey).(*firehydrantgosdk.FireHydrant)
 	if !ok || client == nil {
-		return nil, errors.New("API token is required. Set --token flag, FIREHYDRANT_API_TOKEN env var, or configure a config file")
+		return nil, errNoCredentials
 	}
 	return client, nil
 }
@@ -221,15 +230,18 @@ func loadConfigFile(cmd *cli.Command) {
 		if cmd.IsSet(flagName) {
 			continue
 		}
-		// We can't easily set flag values after parsing in v3,
-		// so we set environment variables as a fallback mechanism
+		// Flags are already parsed, so set root flags (token, api-host,
+		// debug) directly; cmd.Set fails harmlessly for subcommand flags.
+		// The env var export covers subcommand flags, which are parsed later.
 		switch v := val.(type) {
 		case string:
 			if v != "" {
+				_ = cmd.Set(flagName, v)
 				os.Setenv(envForFlag(flagName), v)
 			}
 		case bool:
 			if v {
+				_ = cmd.Set(flagName, "true")
 				os.Setenv(envForFlag(flagName), "true")
 			}
 		}
@@ -318,6 +330,7 @@ func failCmd(cmd *cli.Command, err error) error {
 }
 
 func reportError(cmd *cli.Command, err error) {
+	err = withLoginHint(err)
 	if cmd.Bool("interactive") {
 		fmt.Fprintln(os.Stderr, "Error:", err.Error())
 	} else {

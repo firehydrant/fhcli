@@ -222,7 +222,7 @@ func reservedFlagNames() map[string]bool {
 		"help": true, "h": true, "version": true, "v": true,
 		"data": true, "dry-run": true, "yes": true,
 	}
-	for _, f := range globalFlags {
+	for _, f := range newGlobalFlags() {
 		for _, n := range f.Names() {
 			reserved[n] = true
 		}
