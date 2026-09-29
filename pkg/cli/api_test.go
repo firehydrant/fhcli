@@ -123,7 +123,7 @@ func TestAPICmdQueryFlags(t *testing.T) {
 	cmd := findCmd(t, newAPICmd(miniSpec(t), nil, noopRun), "incidents", "list-incidents")
 
 	// "token" is a query param in the fixture but would shadow the root --token flag.
-	want := []string{"page", "status", "tags", "custom-fields-field-id", "data", "dry-run", "yes"}
+	want := []string{"page", "status", "tags", "custom-fields-field-id", "custom-fields-value", "data", "dry-run", "yes"}
 	if got := flagNames(cmd); !reflect.DeepEqual(got, want) {
 		t.Errorf("flags = %v, want %v", got, want)
 	}
@@ -179,7 +179,7 @@ func TestAPICmdPassesOperationToRunner(t *testing.T) {
 	if gotOp.ID != "list_incidents" || gotPage != 2 {
 		t.Errorf("runner got op=%q page=%d", gotOp.ID, gotPage)
 	}
-	if len(gotBindings) != 4 || gotBindings[0].flag != "page" || gotBindings[0].inBody {
+	if len(gotBindings) != 5 || gotBindings[0].flag != "page" || gotBindings[0].inBody {
 		t.Errorf("bindings = %+v", gotBindings)
 	}
 }
@@ -246,5 +246,43 @@ func TestAPICmdRegistersEveryEmbeddedOperation(t *testing.T) {
 
 	if leaves != len(sp.Operations) {
 		t.Errorf("registered %d commands for %d operations", leaves, len(sp.Operations))
+	}
+}
+
+func TestAPICmdHelpListsDataOnlyBodyFields(t *testing.T) {
+	api := newAPICmd(miniSpec(t), nil, noopRun)
+
+	create := findCmd(t, api, "incidents", "create-incident").Description
+	for _, want := range []string{"Set these body fields with --data:", "data (string)", "impacts (array of object)", "labels (object)"} {
+		if !strings.Contains(create, want) {
+			t.Errorf("create-incident help should mention %q, got:\n%s", want, create)
+		}
+	}
+
+	// Bracketed form fields fold to their root key.
+	if closeHelp := findCmd(t, api, "incidents", "close-incident").Description; !strings.Contains(closeHelp, "fields (object)") {
+		t.Errorf("close-incident help should mention fields (object), got:\n%s", closeHelp)
+	}
+
+	if list := findCmd(t, api, "incidents", "list-incidents").Description; strings.Contains(list, "--data") {
+		t.Errorf("an operation without --data-only fields should not list any, got:\n%s", list)
+	}
+}
+
+func TestAPIFlagHelpIgnoresBackticksInDescriptions(t *testing.T) {
+	root := &cli.Command{Name: "fhcli", Commands: []*cli.Command{newAPICmd(miniSpec(t), nil, noopRun)}}
+
+	out, _, err := runRoot(t, root, "fhcli", "api", "incidents", "list-incidents", "--help")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// urfave/cli treats `text` in a usage string as the value placeholder, which
+	// would render as "--page per_page".
+	if !strings.Contains(out, "--page int") || strings.Contains(out, "--page per_page") {
+		t.Errorf("--page help is wrong:\n%s", out)
+	}
+	if !strings.Contains(out, "'per_page'") {
+		t.Errorf("backticks should render as quotes:\n%s", out)
 	}
 }

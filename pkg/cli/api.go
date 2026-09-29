@@ -62,17 +62,30 @@ func newAPICmd(sp *spec.Spec, loadErr error, run operationFunc) *cli.Command {
 }
 
 func newOperationCmd(op spec.Operation, reserved map[string]bool, run operationFunc) *cli.Command {
-	flags, bindings := operationFlags(op, reserved)
+	flags, bindings, dataOnly := operationFlags(op, reserved)
 
 	args := make([]string, len(op.PathParams))
 	for i, p := range op.PathParams {
 		args[i] = "<" + p.Name + ">"
 	}
 
+	var help []string
+	if op.Description != "" {
+		help = append(help, op.Description)
+	}
+	help = append(help, op.Method+" "+op.Path)
+	if len(dataOnly) > 0 {
+		fields := make([]string, len(dataOnly))
+		for i, p := range dataOnly {
+			fields[i] = describeField(p)
+		}
+		help = append(help, "Set these body fields with --data: "+strings.Join(fields, ", "))
+	}
+
 	return &cli.Command{
 		Name:        commandName(op.ID),
 		Usage:       op.Summary,
-		Description: fmt.Sprintf("%s\n\n%s %s", op.Description, op.Method, op.Path),
+		Description: strings.Join(help, "\n\n"),
 		ArgsUsage:   strings.Join(args, " "),
 		Flags:       flags,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -81,23 +94,37 @@ func newOperationCmd(op spec.Operation, reserved map[string]bool, run operationF
 	}
 }
 
-// operationFlags returns the generated flags for an operation plus the
-// bindings that map them back to parameters. Query params win over body
-// fields; names that would shadow a reserved flag are skipped (their values
-// can still be sent via --data when they're body fields).
-func operationFlags(op spec.Operation, reserved map[string]bool) ([]cli.Flag, []flagBinding) {
+// operationFlags returns the generated flags for an operation, the bindings
+// that map them back to parameters, and the body fields that can only be set
+// via --data (listed in help so agents can discover them). Query params win
+// over body fields; names that would shadow a reserved flag are skipped.
+func operationFlags(op spec.Operation, reserved map[string]bool) ([]cli.Flag, []flagBinding, []spec.Param) {
 	used := map[string]bool{}
 	var flags []cli.Flag
 	var bindings []flagBinding
+	var dataOnly []spec.Param
+	listed := map[string]bool{}
+
+	addDataOnly := func(p spec.Param) {
+		if p.Name == "" || listed[p.Name] {
+			return
+		}
+		listed[p.Name] = true
+		dataOnly = append(dataOnly, p)
+	}
 
 	add := func(p spec.Param, inBody bool) {
 		// Bracketed names (fields[label]) are Grape nested-hash notation:
-		// fine in a query string, meaningless as a JSON body key.
+		// meaningless as a JSON body key, so list the root key instead.
 		if inBody && strings.ContainsAny(p.Name, "[]") {
+			addDataOnly(spec.Param{Name: p.Name[:strings.IndexAny(p.Name, "[]")], Type: "object"})
 			return
 		}
 		name := commandName(p.Name)
 		if name == "" || reserved[name] || used[name] || !p.Scalar() {
+			if inBody {
+				addDataOnly(p)
+			}
 			return
 		}
 		used[name] = true
@@ -118,7 +145,19 @@ func operationFlags(op spec.Operation, reserved map[string]bool) ([]cli.Flag, []
 		&cli.BoolFlag{Name: "yes", Usage: "confirm a destructive (DELETE) operation"},
 	)
 
-	return flags, bindings
+	return flags, bindings, dataOnly
+}
+
+// describeField renders a body field for help, e.g. "impacts (array of object)".
+func describeField(p spec.Param) string {
+	kind := p.Type
+	if p.Type == "array" && p.ItemType != "" {
+		kind = "array of " + p.ItemType
+	}
+	if p.Required {
+		kind += ", required"
+	}
+	return p.Name + " (" + kind + ")"
 }
 
 func newParamFlag(name string, p spec.Param) cli.Flag {
@@ -129,7 +168,8 @@ func newParamFlag(name string, p spec.Param) cli.Flag {
 	if p.Required {
 		usage += " (required)"
 	}
-	usage = strings.TrimSpace(usage)
+	// urfave/cli treats `text` in a usage string as the value placeholder.
+	usage = strings.TrimSpace(strings.ReplaceAll(usage, "`", "'"))
 
 	switch p.Type {
 	case "integer":
@@ -288,8 +328,9 @@ func buildRequest(cmd *cli.Command, op spec.Operation, bindings []flagBinding) (
 			continue
 		}
 		if values, ok := value.([]string); ok {
+			key := arrayQueryKey(b.param.Name)
 			for _, v := range values {
-				req.Query.Add(b.param.Name, v)
+				req.Query.Add(key, v)
 			}
 		} else {
 			req.Query.Set(b.param.Name, fmt.Sprint(value))
@@ -298,6 +339,17 @@ func buildRequest(cmd *cli.Command, op spec.Operation, bindings []flagBinding) (
 
 	req.Body = body
 	return req, nil
+}
+
+// arrayQueryKey returns the Rack array form of a query param name, which is
+// what Grape parses as an Array: "include" → "include[]",
+// "custom_fields[field_id]" → "custom_fields[][field_id]". A repeated bare
+// key keeps only the last value, and parent[child] parses as a Hash.
+func arrayQueryKey(name string) string {
+	if i := strings.Index(name, "["); i >= 0 {
+		return name[:i] + "[]" + name[i:]
+	}
+	return name + "[]"
 }
 
 func flagValue(cmd *cli.Command, b flagBinding) any {

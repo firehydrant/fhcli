@@ -174,6 +174,8 @@ fhcli api incidents list-incidents --status open --per-page 5
 - Prefer a curated command above (`triage`, `context`, `note`, `update`, …) when one fits.
 - Path parameters are positional arguments, in the order shown by `--help` (e.g. `<incident_id> <role_id>`).
 - Simple body fields are flags. Nested fields go in `--data '{...}'`, `--data @file.json`, or `--data -` (stdin). Flags override keys in `--data`.
+- An operation's `--help` ends with "Set these body fields with --data: …" listing the nested/complex body fields (with types and which are required) that have no flag.
+- Array flags split on commas (`--tags a,b` = two values); an element that itself contains a comma must go through `--data`.
 - **Before running any non-GET `fhcli api` command, run it with `--dry-run` and show the user the request.** Send it only after they agree.
 - DELETE operations refuse to run without `--yes`. **Never pass `--yes` unless the user explicitly confirmed that deletion in this conversation.**
 - Responses are the API's raw JSON. Errors are JSON on stderr with a non-zero exit code.

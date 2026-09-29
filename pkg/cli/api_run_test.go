@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -70,18 +71,45 @@ func TestAPIDryRunIncludesQuery(t *testing.T) {
 	ts := failIfCalled(t)
 
 	out, _, err := runMini(t, ts.URL, "api", "incidents", "list-incidents",
-		"--page", "2", "--status", "open", "--tags", "a", "--tags", "b", "--custom-fields-field-id", "cf1", "--dry-run")
+		"--page", "2", "--status", "open", "--tags", "a", "--tags", "b",
+		"--custom-fields-field-id", "cf1", "--custom-fields-value", "v1", "--dry-run")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	d := parseDryRun(t, out)
-	want := map[string][]string{"page": {"2"}, "status": {"open"}, "tags": {"a", "b"}, "custom_fields[field_id]": {"cf1"}}
+	// Array params use Rack array syntax (name[] / parent[][child]); Grape
+	// rejects a repeated bare key and parses parent[child] as a Hash.
+	want := map[string][]string{
+		"page": {"2"}, "status": {"open"}, "tags[]": {"a", "b"},
+		"custom_fields[][field_id]": {"cf1"}, "custom_fields[][value]": {"v1"},
+	}
 	if !reflect.DeepEqual(d.Query, want) {
 		t.Errorf("query = %v, want %v", d.Query, want)
 	}
 	if d.Body != nil {
 		t.Errorf("GET should have no body, got %v", d.Body)
+	}
+}
+
+func TestAPISendsArrayQueryInRackSyntax(t *testing.T) {
+	var got url.Values
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[]}`))
+	}))
+	defer ts.Close()
+
+	_, _, err := runMini(t, ts.URL, "api", "incidents", "list-incidents",
+		"--tags", "a", "--tags", "b", "--custom-fields-field-id", "f1", "--custom-fields-value", "v1")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := url.Values{"tags[]": {"a", "b"}, "custom_fields[][field_id]": {"f1"}, "custom_fields[][value]": {"v1"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("server received query %v, want %v", got, want)
 	}
 }
 

@@ -13,9 +13,22 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("XDG_CONFIG_HOME", dir)
+	// Keep the developer's credentials and host out of tests: a real token
+	// would make "no token" tests vacuous and could reach the real API.
+	for _, name := range []string{"FIREHYDRANT_API_TOKEN", "FH_API_KEY", "FH_API_HOST", "FH_CONFIG_FILE"} {
+		os.Unsetenv(name)
+	}
 
 	code := m.Run()
 
 	os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+func TestTestEnvironmentHasNoCredentials(t *testing.T) {
+	for _, name := range []string{"FIREHYDRANT_API_TOKEN", "FH_API_KEY", "FH_API_HOST", "FH_CONFIG_FILE"} {
+		if v := os.Getenv(name); v != "" {
+			t.Errorf("%s leaks into tests from the developer's shell; TestMain must clear it", name)
+		}
+	}
 }

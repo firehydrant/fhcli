@@ -17,10 +17,11 @@
         "summary": "List incidents",
         "description": "List all incidents",
         "parameters": [
-          {"name": "page", "in": "query", "type": "integer"},
+          {"name": "page", "in": "query", "type": "integer", "description": "Page number, see `per_page`"},
           {"name": "status", "in": "query", "type": "string", "description": "Incident status", "enum": ["open", "resolved"]},
           {"name": "tags", "in": "query", "type": "array", "items": {"type": "string"}},
-          {"name": "custom_fields[field_id]", "in": "query", "type": "string"},
+          {"name": "custom_fields[field_id]", "in": "query", "type": "array", "items": {"type": "string"}},
+          {"name": "custom_fields[value]", "in": "query", "type": "array", "items": {"type": "string"}},
           {"name": "token", "in": "query", "type": "string"}
         ]
       },
