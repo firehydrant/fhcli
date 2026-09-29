@@ -22,6 +22,14 @@ $ wget -c https://github.com/firehydrant/fhcli/releases/latest/download/fhcli_0.
 $ fhcli --version
 ```
 
+## Logging in
+
+    fhcli login              # opens your browser; pick the organization and approve
+    fhcli whoami             # who and where the CLI is acting
+    fhcli logout             # revoke and delete the stored login
+
+Other regions: `fhcli login --region eu` (also `au`, `in`, `staging`). The login is stored in the macOS Keychain (set `FHCLI_TOKEN_STORE=file` for `~/.config/fhcli/credentials/`) and refreshed automatically. An API token (`--token`, `FIREHYDRANT_API_TOKEN`, `FH_API_KEY`, or a config file) still takes precedence, and is still needed for CI and bot-only endpoints.
+
 ## Usage
 
 `fhcli [action] [parameters] [command]`

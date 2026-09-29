@@ -150,7 +150,7 @@ func TestCommandTree(t *testing.T) {
 		topLevel[c.Name] = true
 	}
 
-	expected := []string{"init", "event", "execute", "incidents", "services", "teams", "install", "api", "spec"}
+	expected := []string{"init", "event", "execute", "incidents", "services", "teams", "install", "api", "spec", "login", "logout", "whoami"}
 	for _, name := range expected {
 		if !topLevel[name] {
 			t.Errorf("expected top-level command %q to be registered", name)

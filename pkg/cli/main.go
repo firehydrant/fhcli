@@ -106,6 +106,9 @@ func newRootCmd(commit, version string, sp *spec.Spec, specErr error) *cli.Comma
 			newTeamsCmd(),
 			newAPICmd(sp, specErr, runOperation),
 			newSpecCmd(),
+			newLoginCmd(),
+			newLogoutCmd(),
+			newWhoamiCmd(),
 			newInstallCmd(),
 		},
 	}

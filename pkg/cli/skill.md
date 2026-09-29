@@ -206,6 +206,9 @@ fhcli api incidents list-incidents --status open --per-page 5
 | `fhcli event <summary> [--environment E] [--service S] [--labels "k=v"]` | Submit a change event |
 | `fhcli execute <command> [--environment E] [--service S]` | Run a command and track as change event |
 | `fhcli api <area> <operation> [args] [--flags] [--data JSON] [--dry-run] [--yes]` | Call any public API operation |
+| `fhcli login [--region us\|eu\|au\|in\|staging] [--org ID] [--no-browser]` | Log in with the browser (user runs this, not the agent) |
+| `fhcli logout [--region R]` | Revoke and delete the stored login |
+| `fhcli whoami` | Show user, organization, region, and auth source |
 
 ## Workflow patterns
 
@@ -325,4 +328,8 @@ fhcli incidents list --status active | jq '.data[] | {id, name, severity}'
 
 ## Authentication
 
-The CLI authenticates via `FIREHYDRANT_API_TOKEN` environment variable (or `FH_API_KEY`).
+The user logs in once with `fhcli login` (browser-based; the token is stored in the macOS Keychain and refreshed automatically). An API token in `--token`, `FIREHYDRANT_API_TOKEN`/`FH_API_KEY`, or a config file takes precedence over the login.
+
+- **Never run `fhcli login` yourself** — it opens a browser and needs the user. If a command fails with "login expired", "API token is required", or a 401 with the `fhcli login` hint, ask the user to run `fhcli login` (or `! fhcli login` in Claude Code).
+- Before any write, run `fhcli whoami` to confirm the organization and region you are acting in. It reports `source` (`login` or `api_token`) and never prints the token.
+- Some bot-only endpoints reject user logins; those still need an API token.
