@@ -160,6 +160,24 @@ As the user investigates, be proactive:
   fhcli incidents resolve <id> --milestone resolved
   ```
 
+## Everything else: `fhcli api`
+
+The commands above cover the common incident workflow. For anything else, `fhcli api` exposes every public API operation, generated from FireHydrant's OpenAPI spec:
+
+```
+fhcli api --help                              # list API areas
+fhcli api incidents --help                    # list operations in an area
+fhcli api incidents list-incidents --help     # list an operation's flags
+fhcli api incidents list-incidents --status open --per-page 5
+```
+
+- Prefer a curated command above (`triage`, `context`, `note`, `update`, …) when one fits.
+- Path parameters are positional arguments, in the order shown by `--help` (e.g. `<incident_id> <role_id>`).
+- Simple body fields are flags. Nested fields go in `--data '{...}'`, `--data @file.json`, or `--data -` (stdin). Flags override keys in `--data`.
+- **Before running any non-GET `fhcli api` command, run it with `--dry-run` and show the user the request.** Send it only after they agree.
+- DELETE operations refuse to run without `--yes`. **Never pass `--yes` unless the user explicitly confirmed that deletion in this conversation.**
+- Responses are the API's raw JSON. Errors are JSON on stderr with a non-zero exit code.
+
 ## Command reference
 
 | Command | Description |
@@ -183,6 +201,7 @@ As the user investigates, be proactive:
 | `fhcli teams oncall [--team-id T]` | List on-call schedules with current/next shift |
 | `fhcli event <summary> [--environment E] [--service S] [--labels "k=v"]` | Submit a change event |
 | `fhcli execute <command> [--environment E] [--service S]` | Run a command and track as change event |
+| `fhcli api <area> <operation> [args] [--flags] [--data JSON] [--dry-run] [--yes]` | Call any public API operation |
 
 ## Workflow patterns
 
