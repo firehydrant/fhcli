@@ -102,6 +102,7 @@ func newRootCmd(commit, version string, sp *spec.Spec, specErr error) *cli.Comma
 			newServicesCmd(),
 			newTeamsCmd(),
 			newAPICmd(sp, specErr, runOperation),
+			newSpecCmd(),
 			newInstallCmd(),
 		},
 	}
@@ -118,7 +119,7 @@ func rootBefore(ctx context.Context, cmd *cli.Command) (context.Context, error) 
 	if cmd.Args().Present() {
 		cmdName = cmd.Args().First()
 	}
-	if cmdName == "init" || cmdName == "install" {
+	if cmdName == "init" || cmdName == "install" || cmdName == "spec" {
 		return ctx, nil
 	}
 
