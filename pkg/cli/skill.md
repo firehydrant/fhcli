@@ -314,7 +314,7 @@ End-to-end flow from page to resolution.
 
 ## Output format
 
-All commands output JSON by default. Pipe through `jq` for filtering:
+All commands output JSON by default: one compact line when output is piped or captured (as it is for agents), indented in an interactive terminal. Pipe through `jq` for filtering:
 ```
 fhcli incidents list --status active | jq '.data[] | {id, name, severity}'
 ```

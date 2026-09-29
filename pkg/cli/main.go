@@ -256,11 +256,25 @@ func envForFlag(flagName string) string {
 	}
 }
 
-// outputJSON writes JSON-encoded data to the given writer.
+// outputJSON writes data as JSON: indented when w is a terminal, one compact
+// line otherwise, so agents and pipes get terse output that costs fewer tokens.
 func outputJSON(w io.Writer, data any) error {
 	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
+	if isTerminal(w) {
+		enc.SetIndent("", "  ")
+	}
 	return enc.Encode(data)
+}
+
+// isTerminal reports whether w is a character device (a terminal), as
+// opposed to a pipe, file, or buffer.
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // outputResult writes data as JSON to stdout, or human-readable if --interactive is set.
