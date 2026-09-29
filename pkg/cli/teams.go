@@ -59,7 +59,7 @@ func newTeamsCmd() *cli.Command {
 func teamsListCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	page := int(cmd.Int("page"))
@@ -76,7 +76,7 @@ func teamsListCmd(ctx context.Context, cmd *cli.Command) error {
 
 	resp, err := client.Teams.ListTeams(ctx, req)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -85,17 +85,17 @@ func teamsListCmd(ctx context.Context, cmd *cli.Command) error {
 func teamsGetCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("team ID is required"))
+		return failCmd(cmd, errors.New("team ID is required"))
 	}
 	teamID := cmd.Args().First()
 
 	resp, err := client.Teams.GetTeam(ctx, teamID, nil)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -104,7 +104,7 @@ func teamsGetCmd(ctx context.Context, cmd *cli.Command) error {
 func teamsOnCallCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	var teamID *string
@@ -114,7 +114,7 @@ func teamsOnCallCmd(ctx context.Context, cmd *cli.Command) error {
 
 	resp, err := client.Signals.ListOrganizationOnCallSchedules(ctx, teamID)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)

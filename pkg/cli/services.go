@@ -48,7 +48,7 @@ func newServicesCmd() *cli.Command {
 func servicesListCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	page := int(cmd.Int("page"))
@@ -65,7 +65,7 @@ func servicesListCmd(ctx context.Context, cmd *cli.Command) error {
 
 	resp, err := client.CatalogEntries.ListServices(ctx, req)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -74,17 +74,17 @@ func servicesListCmd(ctx context.Context, cmd *cli.Command) error {
 func servicesGetCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("service ID is required"))
+		return failCmd(cmd, errors.New("service ID is required"))
 	}
 	serviceID := cmd.Args().First()
 
 	resp, err := client.CatalogEntries.GetService(ctx, serviceID)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)

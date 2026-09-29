@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -54,7 +55,7 @@ var globalFlags = []cli.Flag{
 		Name:    "api-host",
 		Aliases: []string{"apiHost"},
 		Usage:   "FireHydrant API hostname",
-		Value:   "https://api.firehydrant.io",
+		Value:   defaultAPIHost,
 		Sources: cli.EnvVars("FH_API_HOST"),
 	},
 	&cli.BoolFlag{
@@ -125,16 +126,19 @@ func rootBefore(ctx context.Context, cmd *cli.Command) (context.Context, error) 
 	}
 
 	apiHost := cmd.String("api-host")
-	if apiHost != "" && apiHost != "https://api.firehydrant.io" {
+	if apiHost != "" && apiHost != defaultAPIHost {
 		// Ensure the host has a scheme
 		if !strings.HasPrefix(apiHost, "http://") && !strings.HasPrefix(apiHost, "https://") {
 			apiHost = "https://" + apiHost
 		}
 		opts = append(opts, firehydrantgosdk.WithServerURL(apiHost))
+	} else {
+		apiHost = defaultAPIHost
 	}
 
 	client := firehydrantgosdk.New(opts...)
 	ctx = context.WithValue(ctx, sdkClientKey, client)
+	ctx = context.WithValue(ctx, rawClientKey, &rawClient{baseURL: apiHost, token: token, http: http.DefaultClient})
 
 	return ctx, nil
 }
@@ -262,19 +266,33 @@ func outputInteractive(w io.Writer, data any) error {
 	return err
 }
 
-// handleError formats an error appropriately and respects --ignore-errors.
+// handleError reports an error and respects --ignore-errors. It is for the
+// change-event commands (event, execute, init), which default to exiting 0 so
+// a FireHydrant outage never fails a CI pipeline.
 func handleError(cmd *cli.Command, err error) error {
-	if cmd.Bool("interactive") {
-		fmt.Fprintln(os.Stderr, "Error:", err.Error())
-	} else {
-		outputJSON(os.Stderr, map[string]string{"error": err.Error()})
-	}
+	reportError(cmd, err)
 
 	if cmd.Bool("ignore-errors") {
 		return nil
 	}
 
 	return err
+}
+
+// failCmd reports an error and always returns it so the CLI exits non-zero.
+// Incident, service, and team commands use it: agents and scripts rely on the
+// exit code to tell a failed lookup or write from a successful one.
+func failCmd(cmd *cli.Command, err error) error {
+	reportError(cmd, err)
+	return err
+}
+
+func reportError(cmd *cli.Command, err error) {
+	if cmd.Bool("interactive") {
+		fmt.Fprintln(os.Stderr, "Error:", err.Error())
+	} else {
+		outputJSON(os.Stderr, map[string]string{"error": err.Error()})
+	}
 }
 
 // parseKV parses a "k=v,k2=v2" string into a map.

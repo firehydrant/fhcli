@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sync"
 
 	firehydrantgosdk "github.com/firehydrant/firehydrant-go-sdk"
@@ -201,7 +203,7 @@ func newIncidentsCmd() *cli.Command {
 func incidentsListCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	page := int(cmd.Int("page"))
@@ -224,7 +226,7 @@ func incidentsListCmd(ctx context.Context, cmd *cli.Command) error {
 
 	resp, err := client.Incidents.ListIncidents(ctx, req)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -233,17 +235,17 @@ func incidentsListCmd(ctx context.Context, cmd *cli.Command) error {
 func incidentsGetCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
 	resp, err := client.Incidents.GetIncident(ctx, incidentID)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -252,11 +254,11 @@ func incidentsGetCmd(ctx context.Context, cmd *cli.Command) error {
 func incidentsNoteCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 	body := cmd.String("body")
@@ -265,7 +267,7 @@ func incidentsNoteCmd(ctx context.Context, cmd *cli.Command) error {
 		Body: body,
 	})
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -274,11 +276,11 @@ func incidentsNoteCmd(ctx context.Context, cmd *cli.Command) error {
 func incidentsChatCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 	body := cmd.String("body")
@@ -287,7 +289,7 @@ func incidentsChatCmd(ctx context.Context, cmd *cli.Command) error {
 		Body: body,
 	})
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -296,49 +298,56 @@ func incidentsChatCmd(ctx context.Context, cmd *cli.Command) error {
 func incidentsAlertsCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
 	resp, err := client.Alerts.ListIncidentAlerts(ctx, incidentID)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
 }
 
 func incidentsSummaryCmd(ctx context.Context, cmd *cli.Command) error {
-	client, err := getClient(ctx)
+	client, err := getRawClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
-	resp, err := client.Audiences.ListAudienceSummaries(ctx, incidentID)
+	resp, err := listAudienceSummaries(ctx, client, incidentID)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
 }
 
+// listAudienceSummaries bypasses the SDK: the published spec documents this
+// endpoint as {incident_id, audiences: string}, but it actually returns
+// {data: {incident_id, summaries: [...]}}, so the SDK type decodes to {}.
+func listAudienceSummaries(ctx context.Context, client *rawClient, incidentID string) (json.RawMessage, error) {
+	return client.get(ctx, "/v1/audiences/summaries/"+url.PathEscape(incidentID), nil)
+}
+
 func incidentsEventsCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
@@ -352,32 +361,34 @@ func incidentsEventsCmd(ctx context.Context, cmd *cli.Command) error {
 
 	resp, err := client.Incidents.ListIncidentEvents(ctx, incidentID, types, firehydrantgosdk.Int(page), firehydrantgosdk.Int(perPage))
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
 }
 
+// incidentsTranscriptCmd bypasses the SDK: the published spec documents the
+// list endpoint as returning a single transcript entry, but it returns a
+// paginated {data: [...]} list, so the SDK type decodes to {}.
 func incidentsTranscriptCmd(ctx context.Context, cmd *cli.Command) error {
-	client, err := getClient(ctx)
+	client, err := getRawClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
-	var sort *operations.ListTranscriptEntriesSort
+	query := url.Values{}
 	if s := cmd.String("sort"); s != "" {
-		v := operations.ListTranscriptEntriesSort(s)
-		sort = &v
+		query.Set("sort", s)
 	}
 
-	resp, err := client.Incidents.ListTranscriptEntries(ctx, incidentID, nil, nil, sort)
+	resp, err := client.get(ctx, "/v1/incidents/"+url.PathEscape(incidentID)+"/transcript", query)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -386,11 +397,11 @@ func incidentsTranscriptCmd(ctx context.Context, cmd *cli.Command) error {
 func incidentsUpdateCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
@@ -411,7 +422,7 @@ func incidentsUpdateCmd(ctx context.Context, cmd *cli.Command) error {
 
 	resp, err := client.Incidents.UpdateIncident(ctx, incidentID, update)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -420,11 +431,11 @@ func incidentsUpdateCmd(ctx context.Context, cmd *cli.Command) error {
 func incidentsResolveCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
@@ -437,7 +448,7 @@ func incidentsResolveCmd(ctx context.Context, cmd *cli.Command) error {
 
 	resp, err := client.Incidents.ResolveIncident(ctx, incidentID, reqBody)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	return outputResult(cmd, resp)
@@ -446,19 +457,23 @@ func incidentsResolveCmd(ctx context.Context, cmd *cli.Command) error {
 func incidentsTriageCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
+	}
+	raw, err := getRawClient(ctx)
+	if err != nil {
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
 	var (
-		mu      sync.Mutex
-		errs    []error
-		result  triageResult
-		wg      sync.WaitGroup
+		mu     sync.Mutex
+		errs   []error
+		result triageResult
+		wg     sync.WaitGroup
 	)
 
 	wg.Add(3)
@@ -489,7 +504,7 @@ func incidentsTriageCmd(ctx context.Context, cmd *cli.Command) error {
 
 	go func() {
 		defer wg.Done()
-		resp, err := client.Audiences.ListAudienceSummaries(ctx, incidentID)
+		resp, err := listAudienceSummaries(ctx, raw, incidentID)
 		mu.Lock()
 		defer mu.Unlock()
 		if err != nil {
@@ -502,7 +517,7 @@ func incidentsTriageCmd(ctx context.Context, cmd *cli.Command) error {
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return handleError(cmd, errors.Join(errs...))
+		return failCmd(cmd, errors.Join(errs...))
 	}
 
 	return outputResult(cmd, result)
@@ -511,18 +526,18 @@ func incidentsTriageCmd(ctx context.Context, cmd *cli.Command) error {
 func incidentsContextCmd(ctx context.Context, cmd *cli.Command) error {
 	client, err := getClient(ctx)
 	if err != nil {
-		return handleError(cmd, err)
+		return failCmd(cmd, err)
 	}
 
 	if cmd.NArg() < 1 {
-		return handleError(cmd, errors.New("incident ID is required"))
+		return failCmd(cmd, errors.New("incident ID is required"))
 	}
 	incidentID := cmd.Args().First()
 
 	// Phase 1: Get the incident
 	incident, err := client.Incidents.GetIncident(ctx, incidentID)
 	if err != nil {
-		return handleError(cmd, fmt.Errorf("get incident: %w", err))
+		return failCmd(cmd, fmt.Errorf("get incident: %w", err))
 	}
 
 	result := contextResult{
@@ -531,8 +546,8 @@ func incidentsContextCmd(ctx context.Context, cmd *cli.Command) error {
 
 	// Phase 2: Fetch full details for each service in parallel
 	type serviceResult struct {
-		service  *components.ServiceEntity
-		ownerID  string
+		service *components.ServiceEntity
+		ownerID string
 	}
 	serviceResults := make([]serviceResult, len(incident.Services))
 
@@ -566,7 +581,7 @@ func incidentsContextCmd(ctx context.Context, cmd *cli.Command) error {
 
 	wg.Wait()
 	if len(errs) > 0 {
-		return handleError(cmd, errors.Join(errs...))
+		return failCmd(cmd, errors.Join(errs...))
 	}
 
 	// Build enriched services and collect unique team IDs
@@ -605,8 +620,8 @@ func incidentsContextCmd(ctx context.Context, cmd *cli.Command) error {
 
 	// Phase 3: Fetch team details and on-call schedules in parallel per unique team
 	type teamResult struct {
-		team    any
-		oncall  any
+		team   any
+		oncall any
 	}
 	teamResults := make(map[string]teamResult)
 	var mu2 sync.Mutex
@@ -662,7 +677,7 @@ func incidentsContextCmd(ctx context.Context, cmd *cli.Command) error {
 
 	wg.Wait()
 	if len(errs) > 0 {
-		return handleError(cmd, errors.Join(errs...))
+		return failCmd(cmd, errors.Join(errs...))
 	}
 
 	for _, tr := range teamResults {

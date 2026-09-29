@@ -65,6 +65,13 @@ func jsonHandler(statusCode int, body any) http.HandlerFunc {
 // It prepends the --token and --api-host flags pointing at the test server.
 func runCmd(t *testing.T, serverURL string, args ...string) (string, error) {
 	t.Helper()
+	out, _, err := runCmdFull(t, serverURL, args...)
+	return out, err
+}
+
+// runCmdFull is like runCmd but also returns what the command wrote to stderr.
+func runCmdFull(t *testing.T, serverURL string, args ...string) (string, string, error) {
+	t.Helper()
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -90,11 +97,11 @@ func runCmd(t *testing.T, serverURL string, args ...string) (string, error) {
 	io.Copy(&buf, r)
 	r.Close()
 
-	// Drain stderr
-	io.Copy(io.Discard, rErr)
+	var errBuf bytes.Buffer
+	io.Copy(&errBuf, rErr)
 	rErr.Close()
 
-	return buf.String(), err
+	return buf.String(), errBuf.String(), err
 }
 
 // runCmdNoToken runs a command without the --token flag (for init, install).
@@ -247,12 +254,12 @@ func TestGlobalFlags(t *testing.T) {
 
 	// These flags must exist for backwards compatibility
 	expectedFlags := []string{
-		"token", "apiKey",           // auth token + legacy alias
-		"api-host", "apiHost",       // api host + legacy alias
-		"debug",                     // debug mode
-		"interactive", "i",          // interactive output
+		"token", "apiKey", // auth token + legacy alias
+		"api-host", "apiHost", // api host + legacy alias
+		"debug",            // debug mode
+		"interactive", "i", // interactive output
 		"ignore-errors", "ignoreErrors", // ignore errors + legacy alias
-		"config",                    // config file
+		"config", // config file
 	}
 
 	for _, name := range expectedFlags {
@@ -305,6 +312,7 @@ func TestEventCmd(t *testing.T) {
 			receivedMethod = r.Method
 			json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated) // CreateChangeEvent responds 201
 			json.NewEncoder(w).Encode(map[string]any{
 				"id":      "evt-123",
 				"summary": "deployed payment service",
@@ -346,6 +354,7 @@ func TestEventCmdWithIdentities(t *testing.T) {
 		"POST /v1/changes/events": func(w http.ResponseWriter, r *http.Request) {
 			json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated) // CreateChangeEvent responds 201
 			json.NewEncoder(w).Encode(map[string]any{"id": "evt-456"})
 		},
 	})
@@ -380,6 +389,7 @@ func TestExecuteCmd(t *testing.T) {
 		"POST /v1/changes/events": func(w http.ResponseWriter, r *http.Request) {
 			json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated) // CreateChangeEvent responds 201
 			json.NewEncoder(w).Encode(map[string]any{
 				"id":      "evt-exec-123",
 				"summary": "echo hello",
@@ -408,10 +418,13 @@ func TestExecuteCmdRequiresArgs(t *testing.T) {
 	ts := newTestServer(t, map[string]http.HandlerFunc{})
 	defer ts.Close()
 
-	out, _ := runCmd(t, ts.URL, "execute")
-	// With ignore-errors=true (default), it won't return an error but should output one
-	if !strings.Contains(out, "no command passed") {
-		t.Errorf("expected 'no command passed' error, got: %s", out)
+	_, stderr, err := runCmdFull(t, ts.URL, "execute")
+	// With ignore-errors=true (default), execute stays CI-safe: exit 0, error on stderr
+	if err != nil {
+		t.Errorf("expected no error with ignore-errors default, got: %v", err)
+	}
+	if !strings.Contains(stderr, "no command passed") {
+		t.Errorf("expected 'no command passed' on stderr, got: %s", stderr)
 	}
 }
 
@@ -526,9 +539,12 @@ func TestIncidentsGetCmdRequiresID(t *testing.T) {
 	ts := newTestServer(t, map[string]http.HandlerFunc{})
 	defer ts.Close()
 
-	out, _ := runCmd(t, ts.URL, "incidents", "get")
-	if !strings.Contains(out, "incident ID is required") {
-		t.Errorf("expected 'incident ID is required' error, got: %s", out)
+	_, stderr, err := runCmdFull(t, ts.URL, "incidents", "get")
+	if err == nil {
+		t.Error("expected an error so the CLI exits non-zero")
+	}
+	if !strings.Contains(stderr, "incident ID is required") {
+		t.Errorf("expected 'incident ID is required' on stderr, got: %s", stderr)
 	}
 }
 
@@ -613,8 +629,11 @@ func TestIncidentsSummaryCmd(t *testing.T) {
 	ts := newTestServer(t, map[string]http.HandlerFunc{
 		"GET /v1/audiences/summaries/": func(w http.ResponseWriter, r *http.Request) {
 			jsonHandler(200, map[string]any{
-				"summaries": []map[string]any{
-					{"audience": "internal", "summary": "Database issues"},
+				"data": map[string]any{
+					"incident_id": "inc-abc",
+					"summaries": []map[string]any{
+						{"audience_slug": "internal", "summary": map[string]any{"content": "Database issues"}},
+					},
 				},
 			})(w, r)
 		},
@@ -661,8 +680,9 @@ func TestIncidentsTranscriptCmd(t *testing.T) {
 			if strings.HasSuffix(r.URL.Path, "/transcript") {
 				jsonHandler(200, map[string]any{
 					"data": []map[string]any{
-						{"id": "tx-1", "body": "We're seeing errors"},
+						{"id": "tx-1", "speaker": "Dylan", "words": "We're seeing errors"},
 					},
+					"pagination": map[string]any{"count": 1},
 				})(w, r)
 				return
 			}
@@ -789,9 +809,12 @@ func TestServicesGetCmdRequiresID(t *testing.T) {
 	ts := newTestServer(t, map[string]http.HandlerFunc{})
 	defer ts.Close()
 
-	out, _ := runCmd(t, ts.URL, "services", "get")
-	if !strings.Contains(out, "service ID is required") {
-		t.Errorf("expected 'service ID is required' error, got: %s", out)
+	_, stderr, err := runCmdFull(t, ts.URL, "services", "get")
+	if err == nil {
+		t.Error("expected an error so the CLI exits non-zero")
+	}
+	if !strings.Contains(stderr, "service ID is required") {
+		t.Errorf("expected 'service ID is required' on stderr, got: %s", stderr)
 	}
 }
 
@@ -845,9 +868,12 @@ func TestTeamsGetCmdRequiresID(t *testing.T) {
 	ts := newTestServer(t, map[string]http.HandlerFunc{})
 	defer ts.Close()
 
-	out, _ := runCmd(t, ts.URL, "teams", "get")
-	if !strings.Contains(out, "team ID is required") {
-		t.Errorf("expected 'team ID is required' error, got: %s", out)
+	_, stderr, err := runCmdFull(t, ts.URL, "teams", "get")
+	if err == nil {
+		t.Error("expected an error so the CLI exits non-zero")
+	}
+	if !strings.Contains(stderr, "team ID is required") {
+		t.Errorf("expected 'team ID is required' on stderr, got: %s", stderr)
 	}
 }
 
@@ -908,8 +934,11 @@ func TestIncidentsTriageCmd(t *testing.T) {
 			})(w, r)
 		},
 		"GET /v1/audiences/summaries/": jsonHandler(200, map[string]any{
-			"summaries": []map[string]any{
-				{"audience": "internal", "summary": "Everything is on fire"},
+			"data": map[string]any{
+				"incident_id": "inc-triage",
+				"summaries": []map[string]any{
+					{"audience_slug": "internal", "summary": map[string]any{"content": "Everything is on fire"}},
+				},
 			},
 		}),
 	})
@@ -918,6 +947,9 @@ func TestIncidentsTriageCmd(t *testing.T) {
 	out, err := runCmd(t, ts.URL, "incidents", "triage", "inc-triage")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Everything is on fire") {
+		t.Errorf("expected triage output to contain summary content, got: %s", out)
 	}
 
 	// Parse the output JSON
@@ -942,9 +974,12 @@ func TestIncidentsTriageCmdRequiresID(t *testing.T) {
 	ts := newTestServer(t, map[string]http.HandlerFunc{})
 	defer ts.Close()
 
-	out, _ := runCmd(t, ts.URL, "incidents", "triage")
-	if !strings.Contains(out, "incident ID is required") {
-		t.Errorf("expected 'incident ID is required' error, got: %s", out)
+	_, stderr, err := runCmdFull(t, ts.URL, "incidents", "triage")
+	if err == nil {
+		t.Error("expected an error so the CLI exits non-zero")
+	}
+	if !strings.Contains(stderr, "incident ID is required") {
+		t.Errorf("expected 'incident ID is required' on stderr, got: %s", stderr)
 	}
 }
 
@@ -1055,9 +1090,12 @@ func TestIncidentsContextCmdRequiresID(t *testing.T) {
 	ts := newTestServer(t, map[string]http.HandlerFunc{})
 	defer ts.Close()
 
-	out, _ := runCmd(t, ts.URL, "incidents", "context")
-	if !strings.Contains(out, "incident ID is required") {
-		t.Errorf("expected 'incident ID is required' error, got: %s", out)
+	_, stderr, err := runCmdFull(t, ts.URL, "incidents", "context")
+	if err == nil {
+		t.Error("expected an error so the CLI exits non-zero")
+	}
+	if !strings.Contains(stderr, "incident ID is required") {
+		t.Errorf("expected 'incident ID is required' on stderr, got: %s", stderr)
 	}
 }
 
@@ -1180,5 +1218,38 @@ func TestParamToList(t *testing.T) {
 				t.Errorf("paramToList(%q)[%d]: expected %q, got %q", tt.input, i, v, result[i])
 			}
 		}
+	}
+}
+
+func TestIncidentsGetCmdAPIErrorExitsNonZero(t *testing.T) {
+	ts := newTestServer(t, map[string]http.HandlerFunc{
+		"GET /v1/incidents/": jsonHandler(500, map[string]any{"detail": "boom"}),
+	})
+	defer ts.Close()
+
+	_, stderr, err := runCmdFull(t, ts.URL, "incidents", "get", "inc-abc")
+	if err == nil {
+		t.Error("expected an error so the CLI exits non-zero")
+	}
+	if !strings.Contains(stderr, "error") {
+		t.Errorf("expected a JSON error on stderr, got: %s", stderr)
+	}
+}
+
+func TestIncidentsTranscriptCmdForwardsSort(t *testing.T) {
+	var gotSort string
+	ts := newTestServer(t, map[string]http.HandlerFunc{
+		"GET /v1/incidents/": func(w http.ResponseWriter, r *http.Request) {
+			gotSort = r.URL.Query().Get("sort")
+			jsonHandler(200, map[string]any{"data": []any{}})(w, r)
+		},
+	})
+	defer ts.Close()
+
+	if _, err := runCmd(t, ts.URL, "incidents", "transcript", "inc-abc", "--sort", "desc"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotSort != "desc" {
+		t.Errorf("expected sort=desc to be forwarded, got: %q", gotSort)
 	}
 }

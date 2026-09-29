@@ -298,6 +298,8 @@ All commands output JSON by default. Pipe through `jq` for filtering:
 fhcli incidents list --status active | jq '.data[] | {id, name, severity}'
 ```
 
+`incidents`, `services`, and `teams` commands exit non-zero on failure and write `{"error": "..."}` to stderr — check the exit code before trusting stdout. (`event` and `execute` exit 0 on API errors by default so they never break CI; pass `--ignore-errors=false` to change that.)
+
 ## Authentication
 
 The CLI authenticates via `FIREHYDRANT_API_TOKEN` environment variable (or `FH_API_KEY`).
