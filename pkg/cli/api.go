@@ -2,7 +2,13 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"unicode"
 
@@ -185,4 +191,154 @@ func commandName(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// stdinReader is where `--data -` reads from; tests replace it.
+var stdinReader io.Reader = os.Stdin
+
+// apiRequest is a fully resolved request for one operation.
+type apiRequest struct {
+	Method string
+	Path   string // path with args substituted, e.g. /v1/incidents/abc
+	Query  url.Values
+	Body   map[string]any // nil when no body is sent
+}
+
+type dryRunOutput struct {
+	Method string         `json:"method"`
+	URL    string         `json:"url"`
+	Query  url.Values     `json:"query,omitempty"`
+	Body   map[string]any `json:"body,omitempty"`
+}
+
+// runOperation builds the request for op and either prints it (--dry-run)
+// or sends it. DELETE operations require --yes.
+func runOperation(ctx context.Context, cmd *cli.Command, op spec.Operation, bindings []flagBinding) error {
+	req, err := buildRequest(cmd, op, bindings)
+	if err != nil {
+		return failCmd(cmd, err)
+	}
+
+	if cmd.Bool("dry-run") {
+		return outputJSON(os.Stdout, dryRunOutput{
+			Method: req.Method,
+			URL:    resolveAPIHost(cmd) + req.Path,
+			Query:  req.Query,
+			Body:   req.Body,
+		})
+	}
+
+	if req.Method == http.MethodDelete && !cmd.Bool("yes") {
+		return failCmd(cmd, fmt.Errorf("%s is destructive; re-run with --yes", op.ID))
+	}
+
+	client, err := getRawClient(ctx)
+	if err != nil {
+		return failCmd(cmd, err)
+	}
+
+	var body []byte
+	if req.Body != nil {
+		if body, err = json.Marshal(req.Body); err != nil {
+			return failCmd(cmd, err)
+		}
+	}
+
+	resp, err := client.do(ctx, req.Method, req.Path, req.Query, body)
+	if err != nil {
+		return failCmd(cmd, err)
+	}
+	return outputResult(cmd, resp)
+}
+
+// buildRequest substitutes path args, collects set query flags, and merges
+// --data with set body flags (flags win).
+func buildRequest(cmd *cli.Command, op spec.Operation, bindings []flagBinding) (*apiRequest, error) {
+	args := cmd.Args().Slice()
+	if len(args) < len(op.PathParams) {
+		return nil, fmt.Errorf("%s is required", op.PathParams[len(args)].Name)
+	}
+	if len(args) > len(op.PathParams) {
+		return nil, fmt.Errorf("unexpected argument %q", args[len(op.PathParams)])
+	}
+
+	req := &apiRequest{Method: op.Method, Path: op.Path, Query: url.Values{}}
+	for i, p := range op.PathParams {
+		req.Path = strings.ReplaceAll(req.Path, "{"+p.Name+"}", url.PathEscape(args[i]))
+	}
+
+	body, err := readData(cmd.String("data"))
+	if err != nil {
+		return nil, err
+	}
+	if body != nil && !op.HasBody {
+		return nil, fmt.Errorf("%s takes no request body; remove --data", op.ID)
+	}
+
+	for _, b := range bindings {
+		if !cmd.IsSet(b.flag) {
+			continue
+		}
+		value := flagValue(cmd, b)
+		if b.inBody {
+			if body == nil {
+				body = map[string]any{}
+			}
+			body[b.param.Name] = value
+			continue
+		}
+		if values, ok := value.([]string); ok {
+			for _, v := range values {
+				req.Query.Add(b.param.Name, v)
+			}
+		} else {
+			req.Query.Set(b.param.Name, fmt.Sprint(value))
+		}
+	}
+
+	req.Body = body
+	return req, nil
+}
+
+func flagValue(cmd *cli.Command, b flagBinding) any {
+	switch b.param.Type {
+	case "integer":
+		return cmd.Int(b.flag)
+	case "number":
+		return cmd.Float(b.flag)
+	case "boolean":
+		return cmd.Bool(b.flag)
+	case "array":
+		return cmd.StringSlice(b.flag)
+	default:
+		return cmd.String(b.flag)
+	}
+}
+
+// readData parses --data: inline JSON, @path to a file, or - for stdin. The
+// value must be a JSON object; "" means no --data.
+func readData(value string) (map[string]any, error) {
+	if value == "" {
+		return nil, nil
+	}
+
+	var raw []byte
+	var err error
+	switch {
+	case value == "-":
+		raw, err = io.ReadAll(stdinReader)
+	case strings.HasPrefix(value, "@"):
+		raw, err = os.ReadFile(strings.TrimPrefix(value, "@"))
+	default:
+		raw = []byte(value)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read --data: %w", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil || body == nil {
+		return nil, errors.New("--data must be a JSON object")
+	}
+	return body, nil
 }

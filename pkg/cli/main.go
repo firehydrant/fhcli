@@ -11,6 +11,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/firehydrant/fhcli/pkg/spec"
 	firehydrantgosdk "github.com/firehydrant/firehydrant-go-sdk"
 	"github.com/firehydrant/firehydrant-go-sdk/models/components"
 	"github.com/urfave/cli/v3"
@@ -80,7 +81,13 @@ var globalFlags = []cli.Flag{
 	},
 }
 
+// NewRootCmd builds the CLI with the API spec from spec.Load.
 func NewRootCmd(commit, version string) *cli.Command {
+	sp, err := spec.Load()
+	return newRootCmd(commit, version, sp, err)
+}
+
+func newRootCmd(commit, version string, sp *spec.Spec, specErr error) *cli.Command {
 	cmd := &cli.Command{
 		Name:    "fhcli",
 		Usage:   "FireHydrant CLI",
@@ -94,6 +101,7 @@ func NewRootCmd(commit, version string) *cli.Command {
 			newIncidentsCmd(),
 			newServicesCmd(),
 			newTeamsCmd(),
+			newAPICmd(sp, specErr, runOperation),
 			newInstallCmd(),
 		},
 	}
