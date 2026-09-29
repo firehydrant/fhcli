@@ -29,8 +29,10 @@ type authInfo struct {
 
 // resolveAuth picks credentials in precedence order: an API token (flag,
 // env var, or config file) first, then the stored login for the current
-// region. It returns nil, nil when there are none.
-func resolveAuth(ctx context.Context, cmd *cli.Command) (*authInfo, error) {
+// region. A login goes to its region's API host unless --api-host or
+// FH_API_HOST was given explicitly (explicitHost). It returns nil, nil when
+// there are none.
+func resolveAuth(ctx context.Context, cmd *cli.Command, explicitHost bool) (*authInfo, error) {
 	if token := cmd.String("token"); token != "" {
 		return &authInfo{source: "api_token", header: token, apiHost: resolveAPIHost(cmd)}, nil
 	}
@@ -42,7 +44,7 @@ func resolveAuth(ctx context.Context, cmd *cli.Command) (*authInfo, error) {
 		return nil, err
 	}
 	host := creds.APIHost
-	if cmd.IsSet("api-host") {
+	if explicitHost {
 		host = resolveAPIHost(cmd)
 	}
 	return &authInfo{source: "login", header: "Bearer " + creds.AccessToken, apiHost: host, creds: creds}, nil

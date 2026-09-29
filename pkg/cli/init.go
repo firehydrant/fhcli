@@ -38,7 +38,7 @@ func initCmd(ctx context.Context, cmd *cli.Command) error {
 	if v := cmd.String("token"); v != "" {
 		config.APIKey = v
 	}
-	if v := cmd.String("api-host"); v != "" {
+	if v := cmd.String("api-host"); v != "" && v != defaultAPIHost {
 		config.APIHost = v
 	}
 	config.Debug = cmd.Bool("debug")

@@ -294,7 +294,7 @@ func runOperation(ctx context.Context, cmd *cli.Command, op spec.Operation, bind
 	if cmd.Bool("dry-run") {
 		out := dryRunOutput{
 			Method: req.Method,
-			URL:    resolveAPIHost(cmd) + req.Path,
+			URL:    requestHost(ctx, cmd) + req.Path,
 			Query:  req.Query,
 			Body:   req.Body,
 		}
@@ -482,4 +482,13 @@ func readData(value string) (map[string]any, error) {
 		return nil, errors.New("--data must be a JSON object")
 	}
 	return body, nil
+}
+
+// requestHost is the API host a request is sent to: the resolved auth's host
+// (a login uses its region's), else --api-host.
+func requestHost(ctx context.Context, cmd *cli.Command) string {
+	if info, ok := ctx.Value(authInfoKey).(*authInfo); ok && info != nil {
+		return info.apiHost
+	}
+	return resolveAPIHost(cmd)
 }

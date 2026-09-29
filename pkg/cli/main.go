@@ -117,6 +117,10 @@ func newRootCmd(commit, version string, sp *spec.Spec, specErr error) *cli.Comma
 }
 
 func rootBefore(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+	// Decide before the config file is applied: a config-file apiHost must
+	// not redirect a stored login's token (the config may be in /tmp).
+	explicitHost := cmd.IsSet("api-host")
+
 	// Load config file values
 	loadConfigFile(cmd)
 	sawUnauthorized.Store(false)
@@ -131,7 +135,7 @@ func rootBefore(ctx context.Context, cmd *cli.Command) (context.Context, error) 
 		return ctx, nil
 	}
 
-	info, err := resolveAuth(ctx, cmd)
+	info, err := resolveAuth(ctx, cmd, explicitHost)
 	if err != nil {
 		// Reported by the command via getClient, so --ignore-errors still
 		// applies to event/execute.

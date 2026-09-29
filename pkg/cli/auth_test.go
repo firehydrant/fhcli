@@ -278,3 +278,65 @@ func TestOtherErrorsHaveNoLoginHint(t *testing.T) {
 		t.Errorf("a 404 should not suggest logging in: %q", stderr)
 	}
 }
+
+func TestConfigAPIHostDoesNotRedirectLogin(t *testing.T) {
+	srv := newAuthServer(t)
+	storeLogin(t, loginCreds(srv.URL, time.Now().Add(time.Hour)))
+	cfg := filepath.Join(t.TempDir(), "firehydrant.cfg")
+	os.WriteFile(cfg, []byte("apiHost: http://127.0.0.1:1\n"), 0o600)
+	t.Setenv("FH_API_HOST", "")
+	os.Unsetenv("FH_API_HOST")
+
+	_, stderr, err := runRoot(t, NewRootCmd("test", "0.0.0-test"), "fhcli", "--config", cfg, "incidents", "get", "inc-1")
+
+	if err != nil || srv.lastHeader() != "Bearer login-at" {
+		t.Errorf("Authorization = %q, err = %v, stderr = %s; a config-file apiHost must not redirect the login's token", srv.lastHeader(), err, stderr)
+	}
+}
+
+func TestInitOmitsDefaultAPIHost(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "firehydrant.cfg")
+
+	if _, err := runCmdNoToken(t, "--config", cfg, "init", "--environment", "production"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(cfg)
+	if strings.Contains(string(data), defaultAPIHost) {
+		t.Errorf("init wrote the default API host into the config:\n%s", data)
+	}
+}
+
+func TestExecuteRunsCommandWhenAuthFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	marker := filepath.Join(t.TempDir(), "ran")
+
+	_, _, err := runRoot(t, NewRootCmd("test", "0.0.0-test"), "fhcli", "execute", "touch", marker)
+
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Errorf("execute skipped the wrapped command when auth failed (err = %v)", err)
+	}
+	if err != nil {
+		t.Errorf("execute should exit 0 by default when only the change event fails, got %v", err)
+	}
+}
+
+func TestExecuteReturnsCommandFailureWhenAuthFails(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	_, _, err := runRoot(t, NewRootCmd("test", "0.0.0-test"), "fhcli", "--ignore-errors=false", "execute", "false")
+
+	if err == nil {
+		t.Error("a failing wrapped command must fail execute with --ignore-errors=false")
+	}
+}
+
+func TestDryRunShowsLoginHost(t *testing.T) {
+	storeLogin(t, loginCreds("https://api.eu.example", time.Now().Add(time.Hour)))
+
+	stdout, _, err := runRoot(t, NewRootCmd("test", "0.0.0-test"), "fhcli", "api", "incidents", "get-incident", "inc-1", "--dry-run")
+
+	if err != nil || !strings.Contains(stdout, `"url":"https://api.eu.example/v1/incidents/inc-1"`) {
+		t.Errorf("stdout = %s, err = %v; dry-run must show the host the request goes to", stdout, err)
+	}
+}

@@ -23,14 +23,12 @@ func newExecuteCmd() *cli.Command {
 }
 
 func executeCmd(ctx context.Context, cmd *cli.Command) error {
-	client, err := getClient(ctx)
-	if err != nil {
-		return handleError(cmd, err)
-	}
-
 	if cmd.NArg() < 1 {
 		return handleError(cmd, errors.New("no command passed"))
 	}
+	// Without credentials the command still runs; only the change event is
+	// skipped. Skipping a deploy because a login expired would be worse.
+	client, clientErr := getClient(ctx)
 
 	command := cmd.Args().First()
 	flags := cmd.Args().Tail()
@@ -59,6 +57,16 @@ func executeCmd(ctx context.Context, cmd *cli.Command) error {
 		}
 	} else if cmd.Bool("interactive") {
 		fmt.Fprintf(os.Stderr, "Executed command, duration %dms\n", duration)
+	}
+
+	if clientErr != nil {
+		if err := handleError(cmd, clientErr); err != nil {
+			return err
+		}
+		if cErr != nil {
+			return handleError(cmd, cErr)
+		}
+		return nil
 	}
 
 	changeIdentities := make([]components.ChangeIdentity, 0, len(identities))
