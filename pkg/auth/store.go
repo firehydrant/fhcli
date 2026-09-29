@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -51,6 +52,11 @@ func ConfigDir() string {
 // DefaultStore returns the Keychain on macOS and a 0600 file store elsewhere.
 // FHCLI_TOKEN_STORE=file forces the file store.
 func DefaultStore() Store {
+	if os.Getenv("FHCLI_TOKEN_STORE") != "file" && runtime.GOOS == "darwin" {
+		if _, err := os.Stat(securityPath); err == nil {
+			return NewKeychainStore()
+		}
+	}
 	return NewFileStore(filepath.Join(ConfigDir(), "credentials"))
 }
 
