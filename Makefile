@@ -8,3 +8,6 @@ build:
 
 install: build
 	install -m 0755 fhcli $(shell go env GOPATH)/bin/fhcli
+
+spec:
+	curl -fsSL https://api.firehydrant.io/v1/swagger_doc -o pkg/spec/spec.json
