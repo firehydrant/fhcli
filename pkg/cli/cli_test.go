@@ -72,36 +72,37 @@ func runCmd(t *testing.T, serverURL string, args ...string) (string, error) {
 // runCmdFull is like runCmd but also returns what the command wrote to stderr.
 func runCmdFull(t *testing.T, serverURL string, args ...string) (string, string, error) {
 	t.Helper()
+	argv := append([]string{"fhcli", "--token", "test-token", "--api-host", serverURL}, args...)
+	return runRoot(t, NewRootCmd("test", "0.0.0-test"), argv...)
+}
 
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+// runRoot runs a built root command with argv (argv[0] is the program name),
+// capturing stdout and stderr. The pipes are drained concurrently so large
+// output can't fill a pipe buffer and deadlock the command.
+func runRoot(t *testing.T, root *urfcli.Command, argv ...string) (string, string, error) {
+	t.Helper()
 
-	// Capture stderr too so it doesn't clutter test output
-	oldStderr := os.Stderr
+	oldStdout, oldStderr := os.Stdout, os.Stderr
+	rOut, wOut, _ := os.Pipe()
 	rErr, wErr, _ := os.Pipe()
-	os.Stderr = wErr
+	os.Stdout, os.Stderr = wOut, wErr
 
-	cmd := NewRootCmd("test", "0.0.0-test")
-	fullArgs := append([]string{"fhcli", "--token", "test-token", "--api-host", serverURL}, args...)
+	var outBuf, errBuf bytes.Buffer
+	done := make(chan struct{}, 2)
+	go func() { io.Copy(&outBuf, rOut); done <- struct{}{} }()
+	go func() { io.Copy(&errBuf, rErr); done <- struct{}{} }()
 
-	err := cmd.Run(context.Background(), fullArgs)
+	err := root.Run(context.Background(), argv)
 
-	w.Close()
+	wOut.Close()
 	wErr.Close()
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	r.Close()
-
-	var errBuf bytes.Buffer
-	io.Copy(&errBuf, rErr)
+	<-done
+	<-done
+	os.Stdout, os.Stderr = oldStdout, oldStderr
+	rOut.Close()
 	rErr.Close()
 
-	return buf.String(), errBuf.String(), err
+	return outBuf.String(), errBuf.String(), err
 }
 
 // runCmdNoToken runs a command without the --token flag (for init, install).
