@@ -249,23 +249,30 @@ type dryRunOutput struct {
 	URL    string         `json:"url"`
 	Query  url.Values     `json:"query,omitempty"`
 	Body   map[string]any `json:"body,omitempty"`
+	Note   string         `json:"note,omitempty"`
 }
 
 // runOperation builds the request for op and either prints it (--dry-run)
 // or sends it. DELETE operations require --yes.
 func runOperation(ctx context.Context, cmd *cli.Command, op spec.Operation, bindings []flagBinding) error {
-	req, err := buildRequest(cmd, op, bindings)
+	args := cmd.Args().Slice()
+	req, err := buildRequest(cmd, op, bindings, args)
 	if err != nil {
 		return failCmd(cmd, err)
 	}
+	numberAt := incidentNumberArg(op, args)
 
 	if cmd.Bool("dry-run") {
-		return outputJSON(os.Stdout, dryRunOutput{
+		out := dryRunOutput{
 			Method: req.Method,
 			URL:    resolveAPIHost(cmd) + req.Path,
 			Query:  req.Query,
 			Body:   req.Body,
-		})
+		}
+		if numberAt >= 0 {
+			out.Note = fmt.Sprintf("incident number %s is resolved to its ID when sent", args[numberAt])
+		}
+		return outputJSON(os.Stdout, out)
 	}
 
 	if req.Method == http.MethodDelete && !cmd.Bool("yes") {
@@ -275,6 +282,15 @@ func runOperation(ctx context.Context, cmd *cli.Command, op spec.Operation, bind
 	client, err := getRawClient(ctx)
 	if err != nil {
 		return failCmd(cmd, err)
+	}
+
+	if numberAt >= 0 {
+		id, err := resolveIncidentNumber(ctx, client, args[numberAt])
+		if err != nil {
+			return failCmd(cmd, err)
+		}
+		args[numberAt] = id
+		req.Path = fillPath(op, args)
 	}
 
 	var body []byte
@@ -293,8 +309,7 @@ func runOperation(ctx context.Context, cmd *cli.Command, op spec.Operation, bind
 
 // buildRequest substitutes path args, collects set query flags, and merges
 // --data with set body flags (flags win).
-func buildRequest(cmd *cli.Command, op spec.Operation, bindings []flagBinding) (*apiRequest, error) {
-	args := cmd.Args().Slice()
+func buildRequest(cmd *cli.Command, op spec.Operation, bindings []flagBinding, args []string) (*apiRequest, error) {
 	if len(args) < len(op.PathParams) {
 		return nil, fmt.Errorf("%s is required", op.PathParams[len(args)].Name)
 	}
@@ -302,10 +317,7 @@ func buildRequest(cmd *cli.Command, op spec.Operation, bindings []flagBinding) (
 		return nil, fmt.Errorf("unexpected argument %q", args[len(op.PathParams)])
 	}
 
-	req := &apiRequest{Method: op.Method, Path: op.Path, Query: url.Values{}}
-	for i, p := range op.PathParams {
-		req.Path = strings.ReplaceAll(req.Path, "{"+p.Name+"}", url.PathEscape(args[i]))
-	}
+	req := &apiRequest{Method: op.Method, Path: fillPath(op, args), Query: url.Values{}}
 
 	body, err := readData(cmd.String("data"))
 	if err != nil {
@@ -339,6 +351,54 @@ func buildRequest(cmd *cli.Command, op spec.Operation, bindings []flagBinding) (
 
 	req.Body = body
 	return req, nil
+}
+
+// fillPath substitutes positional args into the operation's path template.
+func fillPath(op spec.Operation, args []string) string {
+	path := op.Path
+	for i, p := range op.PathParams {
+		path = strings.ReplaceAll(path, "{"+p.Name+"}", url.PathEscape(args[i]))
+	}
+	return path
+}
+
+// incidentNumberArg returns the index of an incident_id arg given as an
+// incident number (all digits), or -1. Some endpoints accept numbers and some
+// silently return nothing for them, so the CLI resolves numbers itself.
+func incidentNumberArg(op spec.Operation, args []string) int {
+	for i, p := range op.PathParams {
+		if p.Name == "incident_id" && i < len(args) && isAllDigits(args[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveIncidentNumber looks up an incident by number and returns its ID.
+func resolveIncidentNumber(ctx context.Context, client *rawClient, number string) (string, error) {
+	body, err := client.get(ctx, "/v1/incidents/"+number, nil)
+	if err != nil {
+		return "", fmt.Errorf("resolve incident number %s: %w", number, err)
+	}
+	var incident struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &incident); err != nil || incident.ID == "" {
+		return "", fmt.Errorf("resolve incident number %s: response has no incident id", number)
+	}
+	return incident.ID, nil
 }
 
 // arrayQueryKey returns the Rack array form of a query param name, which is

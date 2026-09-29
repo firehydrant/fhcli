@@ -405,3 +405,119 @@ func TestEventWorksWithInvalidSpecOverride(t *testing.T) {
 		t.Errorf("stdout = %q", out)
 	}
 }
+
+// incidentServer serves GET /v1/incidents/623 -> {"id":"uuid-623"} and records
+// every other request path.
+func incidentServer(t *testing.T, lookupStatus int) (*httptest.Server, *[]string) {
+	t.Helper()
+	var paths []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/incidents/623" {
+			w.WriteHeader(lookupStatus)
+			if lookupStatus == http.StatusOK {
+				w.Write([]byte(`{"id":"uuid-623","number":623}`))
+			} else {
+				w.Write([]byte(`{"detail":"Record not found"}`))
+			}
+			return
+		}
+		w.Write([]byte(`{"id":"role-1"}`))
+	}))
+	t.Cleanup(ts.Close)
+	return ts, &paths
+}
+
+func TestAPIResolvesIncidentNumberToID(t *testing.T) {
+	ts, paths := incidentServer(t, http.StatusOK)
+
+	out, _, err := runMini(t, ts.URL, "api", "incidents", "get-incident-role", "623", "role-1")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"GET /v1/incidents/623", "GET /v1/incidents/uuid-623/roles/role-1"}
+	if !reflect.DeepEqual(*paths, want) {
+		t.Errorf("requests = %v, want %v", *paths, want)
+	}
+	if !strings.Contains(out, "role-1") {
+		t.Errorf("stdout = %q", out)
+	}
+}
+
+func TestAPIPassesIncidentIDThrough(t *testing.T) {
+	ts, paths := incidentServer(t, http.StatusOK)
+
+	_, _, err := runMini(t, ts.URL, "api", "incidents", "get-incident-role", "7c89ed2d-91d9", "role-1")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{"GET /v1/incidents/7c89ed2d-91d9/roles/role-1"}; !reflect.DeepEqual(*paths, want) {
+		t.Errorf("requests = %v, want %v (no lookup for a non-numeric id)", *paths, want)
+	}
+}
+
+func TestAPIIncidentNumberLookupFailureExitsNonZero(t *testing.T) {
+	ts, paths := incidentServer(t, http.StatusNotFound)
+
+	_, stderr, err := runMini(t, ts.URL, "api", "incidents", "get-incident-role", "623", "role-1")
+
+	if err == nil {
+		t.Error("expected an error")
+	}
+	if !strings.Contains(stderr, "resolve incident number 623") || !strings.Contains(stderr, "404") {
+		t.Errorf("stderr = %q", stderr)
+	}
+	if want := []string{"GET /v1/incidents/623"}; !reflect.DeepEqual(*paths, want) {
+		t.Errorf("requests = %v, want only the lookup", *paths)
+	}
+}
+
+func TestAPIIncidentNumberWithDataFromStdin(t *testing.T) {
+	ts, paths := incidentServer(t, http.StatusOK)
+	old := stdinReader
+	stdinReader = strings.NewReader(`{"milestone":"resolved"}`)
+	t.Cleanup(func() { stdinReader = old })
+
+	_, _, err := runMini(t, ts.URL, "api", "incidents", "close-incident", "623", "--data", "-")
+
+	if err != nil {
+		t.Fatalf("stdin must be read once, before the lookup: %v", err)
+	}
+	if want := []string{"GET /v1/incidents/623", "PUT /v1/incidents/uuid-623/close"}; !reflect.DeepEqual(*paths, want) {
+		t.Errorf("requests = %v, want %v", *paths, want)
+	}
+}
+
+func TestAPIDryRunNotesIncidentNumber(t *testing.T) {
+	ts := failIfCalled(t)
+
+	out, _, err := runMini(t, ts.URL, "api", "incidents", "get-incident-role", "623", "role-1", "--dry-run")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var d struct {
+		URL  string `json:"url"`
+		Note string `json:"note"`
+	}
+	json.Unmarshal([]byte(out), &d)
+	if d.URL != ts.URL+"/v1/incidents/623/roles/role-1" {
+		t.Errorf("url = %q", d.URL)
+	}
+	if d.Note != "incident number 623 is resolved to its ID when sent" {
+		t.Errorf("note = %q", d.Note)
+	}
+}
+
+func TestAPIDeleteRefusalHappensBeforeNumberLookup(t *testing.T) {
+	ts := failIfCalled(t)
+
+	_, stderr, err := runMini(t, ts.URL, "api", "incidents", "delete-incident-role", "623", "role-1")
+
+	if err == nil || !strings.Contains(stderr, "re-run with --yes") {
+		t.Errorf("err=%v stderr=%q, want the --yes refusal with no requests", err, stderr)
+	}
+}

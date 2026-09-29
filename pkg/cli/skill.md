@@ -173,6 +173,7 @@ fhcli api incidents list-incidents --status open --per-page 5
 
 - Prefer a curated command above (`triage`, `context`, `note`, `update`, …) when one fits.
 - Path parameters are positional arguments, in the order shown by `--help` (e.g. `<incident_id> <role_id>`).
+- Incidents can be referenced by number (e.g. `623`) anywhere an incident ID is expected — in the curated commands and in `fhcli api`, which resolves the number to the incident's ID before calling (some endpoints silently return nothing for a raw number).
 - Simple body fields are flags. Nested fields go in `--data '{...}'`, `--data @file.json`, or `--data -` (stdin). Flags override keys in `--data`.
 - An operation's `--help` ends with "Set these body fields with --data: …" listing the nested/complex body fields (with types and which are required) that have no flag.
 - Array flags split on commas (`--tags a,b` = two values); an element that itself contains a comma must go through `--data`.
