@@ -3,12 +3,43 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 
 	firehydrantgosdk "github.com/firehydrant/firehydrant-go-sdk"
 	"github.com/firehydrant/firehydrant-go-sdk/models/components"
 	"github.com/firehydrant/firehydrant-go-sdk/models/operations"
 	"github.com/urfave/cli/v3"
 )
+
+// triageResult combines the key data a responder needs when first paged.
+type triageResult struct {
+	Incident  any `json:"incident"`
+	Alerts    any `json:"alerts"`
+	Summaries any `json:"summaries"`
+}
+
+// contextResult enriches an incident with full service and team details.
+type contextResult struct {
+	Incident any               `json:"incident"`
+	Services []enrichedService `json:"services"`
+	Teams    []enrichedTeam    `json:"teams"`
+}
+
+type enrichedService struct {
+	Service        any           `json:"service"`
+	DashboardLinks []serviceLink `json:"dashboard_links"`
+}
+
+type serviceLink struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+type enrichedTeam struct {
+	Team            any `json:"team"`
+	OnCallSchedules any `json:"on_call_schedules"`
+}
 
 func newIncidentsCmd() *cli.Command {
 	return &cli.Command{
@@ -152,6 +183,16 @@ func newIncidentsCmd() *cli.Command {
 						Usage: "post-incident milestone slug to set",
 					},
 				},
+			},
+			{
+				Name:   "triage",
+				Usage:  "get incident details, alerts, and summaries in one call",
+				Action: incidentsTriageCmd,
+			},
+			{
+				Name:   "context",
+				Usage:  "get incident with enriched service and team details",
+				Action: incidentsContextCmd,
 			},
 		},
 	}
@@ -400,4 +441,239 @@ func incidentsResolveCmd(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return outputResult(cmd, resp)
+}
+
+func incidentsTriageCmd(ctx context.Context, cmd *cli.Command) error {
+	client, err := getClient(ctx)
+	if err != nil {
+		return handleError(cmd, err)
+	}
+
+	if cmd.NArg() < 1 {
+		return handleError(cmd, errors.New("incident ID is required"))
+	}
+	incidentID := cmd.Args().First()
+
+	var (
+		mu      sync.Mutex
+		errs    []error
+		result  triageResult
+		wg      sync.WaitGroup
+	)
+
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		resp, err := client.Incidents.GetIncident(ctx, incidentID)
+		mu.Lock()
+		defer mu.Unlock()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("get incident: %w", err))
+			return
+		}
+		result.Incident = resp
+	}()
+
+	go func() {
+		defer wg.Done()
+		resp, err := client.Alerts.ListIncidentAlerts(ctx, incidentID)
+		mu.Lock()
+		defer mu.Unlock()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("list alerts: %w", err))
+			return
+		}
+		result.Alerts = resp
+	}()
+
+	go func() {
+		defer wg.Done()
+		resp, err := client.Audiences.ListAudienceSummaries(ctx, incidentID)
+		mu.Lock()
+		defer mu.Unlock()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("list summaries: %w", err))
+			return
+		}
+		result.Summaries = resp
+	}()
+
+	wg.Wait()
+
+	if len(errs) > 0 {
+		return handleError(cmd, errors.Join(errs...))
+	}
+
+	return outputResult(cmd, result)
+}
+
+func incidentsContextCmd(ctx context.Context, cmd *cli.Command) error {
+	client, err := getClient(ctx)
+	if err != nil {
+		return handleError(cmd, err)
+	}
+
+	if cmd.NArg() < 1 {
+		return handleError(cmd, errors.New("incident ID is required"))
+	}
+	incidentID := cmd.Args().First()
+
+	// Phase 1: Get the incident
+	incident, err := client.Incidents.GetIncident(ctx, incidentID)
+	if err != nil {
+		return handleError(cmd, fmt.Errorf("get incident: %w", err))
+	}
+
+	result := contextResult{
+		Incident: incident,
+	}
+
+	// Phase 2: Fetch full details for each service in parallel
+	type serviceResult struct {
+		service  *components.ServiceEntity
+		ownerID  string
+	}
+	serviceResults := make([]serviceResult, len(incident.Services))
+
+	var (
+		mu   sync.Mutex
+		errs []error
+		wg   sync.WaitGroup
+	)
+
+	for i, svc := range incident.Services {
+		if svc.ID == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(idx int, serviceID string) {
+			defer wg.Done()
+			resp, err := client.CatalogEntries.GetService(ctx, serviceID)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, fmt.Errorf("get service %s: %w", serviceID, err))
+				return
+			}
+			sr := serviceResult{service: resp}
+			if resp.Owner != nil && resp.Owner.ID != nil {
+				sr.ownerID = *resp.Owner.ID
+			}
+			serviceResults[idx] = sr
+		}(i, *svc.ID)
+	}
+
+	wg.Wait()
+	if len(errs) > 0 {
+		return handleError(cmd, errors.Join(errs...))
+	}
+
+	// Build enriched services and collect unique team IDs
+	teamIDs := make(map[string]struct{})
+	for _, sr := range serviceResults {
+		if sr.service == nil {
+			continue
+		}
+		es := enrichedService{
+			Service: sr.service,
+		}
+		for _, link := range sr.service.Links {
+			name := ""
+			url := ""
+			if link.Name != nil {
+				name = *link.Name
+			}
+			if link.HrefURL != nil {
+				url = *link.HrefURL
+			}
+			if url != "" {
+				es.DashboardLinks = append(es.DashboardLinks, serviceLink{Name: name, URL: url})
+			}
+		}
+		if es.DashboardLinks == nil {
+			es.DashboardLinks = []serviceLink{}
+		}
+		result.Services = append(result.Services, es)
+		if sr.ownerID != "" {
+			teamIDs[sr.ownerID] = struct{}{}
+		}
+	}
+	if result.Services == nil {
+		result.Services = []enrichedService{}
+	}
+
+	// Phase 3: Fetch team details and on-call schedules in parallel per unique team
+	type teamResult struct {
+		team    any
+		oncall  any
+	}
+	teamResults := make(map[string]teamResult)
+	var mu2 sync.Mutex
+
+	errs = nil
+	for id := range teamIDs {
+		wg.Add(1)
+		go func(teamID string) {
+			defer wg.Done()
+			var tr teamResult
+			var teamErr, oncallErr error
+
+			// Two parallel calls per team
+			var innerWg sync.WaitGroup
+			innerWg.Add(2)
+
+			go func() {
+				defer innerWg.Done()
+				resp, err := client.Teams.GetTeam(ctx, teamID, nil)
+				if err != nil {
+					teamErr = fmt.Errorf("get team %s: %w", teamID, err)
+					return
+				}
+				tr.team = resp
+			}()
+
+			go func() {
+				defer innerWg.Done()
+				tid := teamID
+				resp, err := client.Signals.ListOrganizationOnCallSchedules(ctx, &tid)
+				if err != nil {
+					oncallErr = fmt.Errorf("get on-call for team %s: %w", teamID, err)
+					return
+				}
+				tr.oncall = resp
+			}()
+
+			innerWg.Wait()
+
+			mu2.Lock()
+			defer mu2.Unlock()
+			if teamErr != nil {
+				errs = append(errs, teamErr)
+				return
+			}
+			if oncallErr != nil {
+				errs = append(errs, oncallErr)
+				return
+			}
+			teamResults[teamID] = tr
+		}(id)
+	}
+
+	wg.Wait()
+	if len(errs) > 0 {
+		return handleError(cmd, errors.Join(errs...))
+	}
+
+	for _, tr := range teamResults {
+		result.Teams = append(result.Teams, enrichedTeam{
+			Team:            tr.team,
+			OnCallSchedules: tr.oncall,
+		})
+	}
+	if result.Teams == nil {
+		result.Teams = []enrichedTeam{}
+	}
+
+	return outputResult(cmd, result)
 }

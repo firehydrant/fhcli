@@ -12,6 +12,18 @@ You are an incident debugging assistant. Use the `fhcli` CLI to help engineers i
 
 Activate when the user mentions: incidents, outages, SEV1/SEV2/etc, pages, on-call, debugging production, "something is broken", service degradation, or asks about ongoing issues.
 
+## Quick-start commands
+
+When you first get paged or need to understand an incident fast, use these compound commands instead of running individual ones:
+
+- **`fhcli incidents triage <id>`** — the "just got paged" command. Returns incident details, alerts, and AI summaries in one call.
+  Key response fields: `incident` (full incident entity), `alerts` (linked alert data with sources and services), `summaries` (AI-generated audience summaries)
+
+- **`fhcli incidents context <id>`** — the "understand the blast radius" command. Returns the incident enriched with full service details (including dashboard links) and owner team details (including Slack channels and on-call schedules).
+  Key response fields: `incident`, `services[].service` (full service entity), `services[].dashboard_links[]` (extracted name/url pairs from service links), `teams[].team` (full team entity with slack_channel), `teams[].on_call_schedules` (current/next shift data)
+
+These are the fastest way to get oriented. Use the individual commands below when you need to dig deeper.
+
 ## Getting up to speed on an incident
 
 When a user joins an investigation or asks about an incident, follow this sequence:
@@ -162,6 +174,8 @@ As the user investigates, be proactive:
 | `fhcli incidents chat <id> --body "..."` | Post a chat message |
 | `fhcli incidents update <id> [--severity S] [--summary S] [--priority P] [--description D]` | Update incident fields |
 | `fhcli incidents resolve <id> [--milestone M]` | Resolve an incident |
+| `fhcli incidents triage <id>` | Get incident + alerts + summaries in one call |
+| `fhcli incidents context <id>` | Get incident with enriched services and teams |
 | `fhcli services list [--query Q] [--page N] [--per-page N]` | List/search services |
 | `fhcli services get <id>` | Get service details, links, owner, environments |
 | `fhcli teams list [--query Q] [--page N] [--per-page N]` | List/search teams |
@@ -207,6 +221,75 @@ fhcli teams get <team-id>
 fhcli teams oncall --team-id <team-id>
 # current_shift.user.name is who's on-call now — suggest pinging them
 ```
+
+## Recipes
+
+Multi-step workflows for common incident scenarios. Follow these step-by-step when the situation matches.
+
+### Recipe: Deploy Correlation
+
+When a deploy may have caused an incident — check alert timestamps against deploy times and log rollbacks.
+
+1. **Get alert timing** — run `fhcli incidents triage <id>` and extract `alerts.data[].created_at` timestamps
+2. **Compare with deploys** — check CI/CD or recent change events for deploys in the same time window
+3. **If correlated** — post a note linking the deploy to the alert timeline:
+   ```
+   fhcli incidents note <id> --body "Alert timestamps correlate with deploy of <service> at <time>. Investigating rollback."
+   ```
+4. **Log the rollback** as a change event:
+   ```
+   fhcli event "Rolled back <service> to <version>" --service <service> --environment production
+   ```
+
+### Recipe: Bring In On-Call
+
+Find the right person to page when you need help from another team.
+
+1. **Get blast radius** — run `fhcli incidents context <id>` to get owner teams, on-call schedules, and Slack channels
+2. **Identify the team** — look at `teams[].team.name` and `teams[].team.slack_channel.name` for the relevant service owner
+3. **Check who's on-call** — look at `teams[].on_call_schedules` for `current_shift.user.name`
+4. **Post to the incident** — tell the team who to contact and where:
+   ```
+   fhcli incidents chat <id> --body "Paging <user> from <team> (on-call now). Team channel: #<slack-channel>"
+   ```
+
+### Recipe: Post-Incident Catalog Audit
+
+After resolving, check all affected services and teams for missing catalog data and post a structured note for the retrospective.
+
+1. **Get context** — run `fhcli incidents context <id>`
+2. **Check services** for gaps:
+   - Empty `services[].dashboard_links` → missing dashboard/runbook links
+   - `services[].service.description` is empty → needs a description
+   - `services[].service.owner` is null → no owning team assigned
+3. **Check teams** for gaps:
+   - `teams[].team.slack_channel` is null → no Slack channel configured
+   - `teams[].on_call_schedules` has no schedules → no on-call rotation
+4. **Post a single note** summarizing all gaps found:
+   ```
+   fhcli incidents note <id> --body "## Catalog gaps discovered during investigation ..."
+   ```
+
+### Recipe: Full Incident Investigation Flow
+
+End-to-end flow from page to resolution.
+
+1. **Triage** — run `fhcli incidents triage <id>` to get oriented (alerts, summaries, details)
+2. **Context** — run `fhcli incidents context <id>` to understand blast radius (services, dashboards, teams, on-call)
+3. **Timeline** — run `fhcli incidents events <id>` to see what's been investigated so far
+4. **Investigate** — use dashboard links from context, run diagnostic commands, tail logs
+5. **Post findings** — log discoveries as notes:
+   ```
+   fhcli incidents note <id> --body "<findings>"
+   ```
+6. **Update summary** as root cause becomes clearer:
+   ```
+   fhcli incidents update <id> --summary "<root cause summary>"
+   ```
+7. **Wrap up** — run the Post-Incident Catalog Audit recipe, then resolve:
+   ```
+   fhcli incidents resolve <id>
+   ```
 
 ## Output format
 
