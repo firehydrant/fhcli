@@ -59,3 +59,10 @@ func TestRegionNamesSorted(t *testing.T) {
 		t.Errorf("RegionNames() = %s", got)
 	}
 }
+
+func TestLookupRegionUSHasBuiltInClientID(t *testing.T) {
+	r, err := LookupRegion("us", "")
+	if err != nil || r.ClientID != "RrNiNdL84S0LYmRu9iVxniuLbqxF7rtno4ghwFNOcNY" {
+		t.Errorf("r = %+v, err = %v; want the US production client ID", r, err)
+	}
+}

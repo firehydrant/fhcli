@@ -22,7 +22,7 @@ type Region struct {
 // "FireHydrant CLI" OAuth application is created in each region; they are
 // public-client identifiers, not secrets.
 var regions = map[string]Region{
-	"us":      {Name: "us", AppHost: "https://app.firehydrant.io", APIHost: "https://api.firehydrant.io"},
+	"us":      {Name: "us", AppHost: "https://app.firehydrant.io", APIHost: "https://api.firehydrant.io", ClientID: "RrNiNdL84S0LYmRu9iVxniuLbqxF7rtno4ghwFNOcNY"},
 	"eu":      subdomainRegion("eu"),
 	"au":      subdomainRegion("au"),
 	"in":      subdomainRegion("in"),
