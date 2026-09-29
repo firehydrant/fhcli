@@ -125,15 +125,9 @@ func rootBefore(ctx context.Context, cmd *cli.Command) (context.Context, error) 
 		}),
 	}
 
-	apiHost := cmd.String("api-host")
-	if apiHost != "" && apiHost != defaultAPIHost {
-		// Ensure the host has a scheme
-		if !strings.HasPrefix(apiHost, "http://") && !strings.HasPrefix(apiHost, "https://") {
-			apiHost = "https://" + apiHost
-		}
+	apiHost := resolveAPIHost(cmd)
+	if apiHost != defaultAPIHost {
 		opts = append(opts, firehydrantgosdk.WithServerURL(apiHost))
-	} else {
-		apiHost = defaultAPIHost
 	}
 
 	client := firehydrantgosdk.New(opts...)
@@ -141,6 +135,19 @@ func rootBefore(ctx context.Context, cmd *cli.Command) (context.Context, error) 
 	ctx = context.WithValue(ctx, rawClientKey, &rawClient{baseURL: apiHost, token: token, http: http.DefaultClient})
 
 	return ctx, nil
+}
+
+// resolveAPIHost returns --api-host with a scheme and no trailing slash,
+// defaulting to production.
+func resolveAPIHost(cmd *cli.Command) string {
+	host := strings.TrimRight(cmd.String("api-host"), "/")
+	if host == "" {
+		return defaultAPIHost
+	}
+	if !strings.HasPrefix(host, "http://") && !strings.HasPrefix(host, "https://") {
+		host = "https://" + host
+	}
+	return host
 }
 
 func getClient(ctx context.Context) (*firehydrantgosdk.FireHydrant, error) {

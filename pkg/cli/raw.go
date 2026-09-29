@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,20 +34,34 @@ func getRawClient(ctx context.Context) (*rawClient, error) {
 	return client, nil
 }
 
-// get issues a GET to path (e.g. "/v1/incidents/abc/transcript") and returns
-// the JSON body. Non-2xx responses become errors that include the API's body.
+// get issues a GET to path (e.g. "/v1/incidents/abc/transcript").
 func (c *rawClient) get(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
+	return c.do(ctx, http.MethodGet, path, query, nil)
+}
+
+// do sends a request and returns the JSON response body. A non-nil body is
+// sent as JSON. Non-2xx responses become errors that include the API's body,
+// and an empty 2xx body (e.g. 204 No Content) is returned as {} so stdout is
+// always valid JSON.
+func (c *rawClient) do(ctx context.Context, method, path string, query url.Values, body []byte) (json.RawMessage, error) {
 	u := strings.TrimRight(c.baseURL, "/") + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	var reqBody io.Reader
+	if body != nil {
+		reqBody = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, reqBody)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", c.token)
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -54,18 +69,19 @@ func (c *rawClient) get(ctx context.Context, path string, query url.Values) (jso
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("GET %s: API returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("%s %s: API returned %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
-
-	if !json.Valid(body) {
-		return nil, fmt.Errorf("GET %s: API returned non-JSON body", path)
+	if len(bytes.TrimSpace(respBody)) == 0 {
+		return json.RawMessage("{}"), nil
 	}
-
-	return body, nil
+	if !json.Valid(respBody) {
+		return nil, fmt.Errorf("%s %s: API returned non-JSON body", method, path)
+	}
+	return respBody, nil
 }
