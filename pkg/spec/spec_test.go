@@ -167,3 +167,41 @@ func TestParseRejectsInvalidSpecs(t *testing.T) {
 		}
 	}
 }
+
+func TestParseResponseFieldsForObject(t *testing.T) {
+	op := findOp(t, loadFixture(t), "get_incident_role")
+
+	if !reflect.DeepEqual(op.ResponseFields, []string{"id", "role", "user"}) {
+		t.Errorf("ResponseFields = %v", op.ResponseFields)
+	}
+	if op.ResponseItemFields != nil {
+		t.Errorf("a non-paginated response has no item fields, got %v", op.ResponseItemFields)
+	}
+}
+
+func TestParseResponseFieldsForPaginatedList(t *testing.T) {
+	op := findOp(t, loadFixture(t), "list_incidents")
+
+	if !reflect.DeepEqual(op.ResponseFields, []string{"data", "pagination"}) {
+		t.Errorf("ResponseFields = %v", op.ResponseFields)
+	}
+	if !reflect.DeepEqual(op.ResponseItemFields, []string{"id", "name", "number"}) {
+		t.Errorf("ResponseItemFields = %v", op.ResponseItemFields)
+	}
+}
+
+func TestParseResponseFieldsUse201(t *testing.T) {
+	op := findOp(t, loadFixture(t), "create_incident")
+
+	if !reflect.DeepEqual(op.ResponseFields, []string{"id", "name", "number"}) {
+		t.Errorf("ResponseFields = %v", op.ResponseFields)
+	}
+}
+
+func TestParseResponseFieldsAbsentWhenUndocumented(t *testing.T) {
+	op := findOp(t, loadFixture(t), "close_incident")
+
+	if op.ResponseFields != nil || op.ResponseItemFields != nil {
+		t.Errorf("close_incident documents no response, got %v / %v", op.ResponseFields, op.ResponseItemFields)
+	}
+}

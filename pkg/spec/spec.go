@@ -45,6 +45,13 @@ type Operation struct {
 	QueryParams []Param
 	BodyFields  []Param // top-level body properties and formData fields
 	HasBody     bool    // the operation accepts a request body
+
+	// ResponseFields are the top-level fields of the documented 200/201
+	// response, sorted; nil when the spec documents none. ResponseItemFields
+	// are the fields of each element when the response has a data array
+	// (paginated lists).
+	ResponseFields     []string
+	ResponseItemFields []string
 }
 
 // Spec is the parsed set of operations.
@@ -65,6 +72,9 @@ type rawOperation struct {
 	Summary     string     `json:"summary"`
 	Description string     `json:"description"`
 	Parameters  []rawParam `json:"parameters"`
+	Responses   map[string]struct {
+		Schema *rawSchema `json:"schema"`
+	} `json:"responses"`
 }
 
 type rawParam struct {
@@ -165,8 +175,40 @@ func (raw *rawSpec) operation(method, path string, data json.RawMessage) (Operat
 		}
 	}
 	op.PathParams = orderByTemplate(path, op.PathParams)
+	raw.responseFields(&op, ro)
 
 	return op, nil
+}
+
+// responseFields records the fields of the 200 (or else 201) response.
+func (raw *rawSpec) responseFields(op *Operation, ro rawOperation) {
+	for _, code := range []string{"200", "201"} {
+		resp, ok := ro.Responses[code]
+		if !ok || resp.Schema == nil {
+			continue
+		}
+		s := raw.resolve(*resp.Schema)
+		op.ResponseFields = sortedKeys(s.Properties)
+		if data, ok := s.Properties["data"]; ok {
+			if d := raw.resolve(data); d.Type == "array" && d.Items != nil {
+				op.ResponseItemFields = sortedKeys(raw.resolve(*d.Items).Properties)
+			}
+		}
+		return
+	}
+}
+
+// sortedKeys returns the property names, sorted; nil for none.
+func sortedKeys(props map[string]rawSchema) []string {
+	if len(props) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (p rawParam) param() Param {

@@ -16,6 +16,7 @@
         "tags": ["Incidents"],
         "summary": "List incidents",
         "description": "List all incidents",
+        "responses": {"200": {"description": "ok", "schema": {"$ref": "#/definitions/paginated_incidents"}}},
         "parameters": [
           {"name": "page", "in": "query", "type": "integer", "description": "Page number, see `per_page`"},
           {"name": "status", "in": "query", "type": "string", "description": "Incident status", "enum": ["open", "resolved"]},
@@ -30,6 +31,7 @@
         "tags": ["Incidents"],
         "summary": "Create an incident",
         "description": "Create a new incident",
+        "responses": {"201": {"description": "created", "schema": {"$ref": "#/definitions/incident_entity"}}},
         "parameters": [
           {"name": "create_incident", "in": "body", "required": true, "schema": {"$ref": "#/definitions/create_incident"}}
         ]
@@ -41,6 +43,7 @@
         "tags": ["Incidents"],
         "summary": "Get an incident role",
         "description": "Retrieve a role assignment",
+        "responses": {"200": {"description": "ok", "schema": {"$ref": "#/definitions/role_entity"}}},
         "parameters": [
           {"name": "role_id", "in": "path", "type": "string", "required": true},
           {"name": "incident_id", "in": "path", "type": "string", "required": true}
@@ -98,6 +101,10 @@
         "data": {"type": "string"}
       }
     },
-    "impact": {"type": "object", "properties": {"id": {"type": "string"}}}
+    "impact": {"type": "object", "properties": {"id": {"type": "string"}}},
+    "incident_entity": {"type": "object", "properties": {"name": {"type": "string"}, "id": {"type": "string"}, "number": {"type": "integer"}}},
+    "paginated_incidents": {"type": "object", "properties": {"data": {"type": "array", "items": {"$ref": "#/definitions/incident_entity"}}, "pagination": {"$ref": "#/definitions/pagination_entity"}}},
+    "pagination_entity": {"type": "object", "properties": {"count": {"type": "integer"}, "page": {"type": "integer"}}},
+    "role_entity": {"type": "object", "properties": {"user": {"type": "object"}, "role": {"type": "string"}, "id": {"type": "string"}}}
   }
 }

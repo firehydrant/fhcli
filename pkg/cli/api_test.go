@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -284,5 +285,34 @@ func TestAPIFlagHelpIgnoresBackticksInDescriptions(t *testing.T) {
 	}
 	if !strings.Contains(out, "'per_page'") {
 		t.Errorf("backticks should render as quotes:\n%s", out)
+	}
+}
+
+func TestAPICmdHelpShowsResponseFields(t *testing.T) {
+	api := newAPICmd(miniSpec(t), nil, noopRun)
+
+	if d := findCmd(t, api, "incidents", "list-incidents").Description; !strings.Contains(d, "Response: data[] (id, name, number), pagination") {
+		t.Errorf("list-incidents help should show paginated response fields, got:\n%s", d)
+	}
+	if d := findCmd(t, api, "incidents", "get-incident-role").Description; !strings.Contains(d, "Response: id, role, user") {
+		t.Errorf("get-incident-role help should show response fields, got:\n%s", d)
+	}
+	if d := findCmd(t, api, "incidents", "close-incident").Description; strings.Contains(d, "Response:") {
+		t.Errorf("an operation without a documented response shows no Response line, got:\n%s", d)
+	}
+}
+
+func TestDescribeResponseTruncatesLongFieldLists(t *testing.T) {
+	var items []string
+	for i := 0; i < 14; i++ {
+		items = append(items, fmt.Sprintf("f%02d", i))
+	}
+	op := spec.Operation{ResponseFields: []string{"data", "pagination"}, ResponseItemFields: items}
+
+	got := describeResponse(op)
+
+	want := "Response: data[] (f00, f01, f02, f03, f04, f05, f06, f07, f08, f09, f10, f11, … 14 fields), pagination"
+	if got != want {
+		t.Errorf("describeResponse = %q\nwant %q", got, want)
 	}
 }

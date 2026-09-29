@@ -81,6 +81,9 @@ func newOperationCmd(op spec.Operation, reserved map[string]bool, run operationF
 		}
 		help = append(help, "Set these body fields with --data: "+strings.Join(fields, ", "))
 	}
+	if response := describeResponse(op); response != "" {
+		help = append(help, response)
+	}
 
 	return &cli.Command{
 		Name:        commandName(op.ID),
@@ -146,6 +149,32 @@ func operationFlags(op spec.Operation, reserved map[string]bool) ([]cli.Flag, []
 	)
 
 	return flags, bindings, dataOnly
+}
+
+// maxHelpFields caps how many response field names help lists before "… N fields".
+const maxHelpFields = 12
+
+// describeResponse renders the documented response shape for help, e.g.
+// "Response: data[] (id, name, number), pagination"; "" when undocumented.
+func describeResponse(op spec.Operation) string {
+	if len(op.ResponseFields) == 0 {
+		return ""
+	}
+	parts := make([]string, len(op.ResponseFields))
+	for i, f := range op.ResponseFields {
+		parts[i] = f
+		if f == "data" && len(op.ResponseItemFields) > 0 {
+			parts[i] = "data[] (" + listFields(op.ResponseItemFields) + ")"
+		}
+	}
+	return "Response: " + listFields(parts)
+}
+
+func listFields(names []string) string {
+	if len(names) <= maxHelpFields {
+		return strings.Join(names, ", ")
+	}
+	return strings.Join(names[:maxHelpFields], ", ") + fmt.Sprintf(", … %d fields", len(names))
 }
 
 // describeField renders a body field for help, e.g. "impacts (array of object)".
