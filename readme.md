@@ -22,6 +22,14 @@ $ wget -c https://github.com/firehydrant/fhcli/releases/latest/download/fhcli_0.
 $ fhcli --version
 ```
 
+## Logging in
+
+    fhcli login              # opens your browser; pick the organization and approve
+    fhcli whoami             # who and where the CLI is acting
+    fhcli logout             # revoke and delete the stored login
+
+Other regions: `fhcli login --region eu` (also `au`, `in`, `staging`). The login is stored in the macOS Keychain (set `FHCLI_TOKEN_STORE=file` for `~/.config/fhcli/credentials/`) and refreshed automatically. An API token (`--token`, `FIREHYDRANT_API_TOKEN`, `FH_API_KEY`, or a config file) still takes precedence, and is still needed for CI and bot-only endpoints.
+
 ## Usage
 
 `fhcli [action] [parameters] [command]`
@@ -67,3 +75,19 @@ The following examples assume that `FH_API_KEY` is set in your environment.
 To configure firehydrant and write a config file (defaults to /tmp/firehydrant.cfg) for subsequent invocations of the tool:
 
     fhcli --config /etc/firehydrant.cfg --apiKey fhb-a0b010 --environment=production --service=monolith init
+
+## Calling any API operation: `fhcli api`
+
+`fhcli api` exposes every FireHydrant public API operation, generated at runtime from the OpenAPI spec (`https://api.firehydrant.io/v1/swagger_doc`) embedded in the binary.
+
+```
+fhcli api --help                                     # API areas
+fhcli api incidents list-incidents --status open     # query params are flags
+fhcli api incidents get-incident <incident_id>       # path params are positional
+fhcli api incidents create-incident --name "DB down" --dry-run   # print the request, send nothing
+fhcli api incidents create-incident --data @incident.json        # full JSON body
+```
+
+DELETE operations require `--yes`. Output is the API's raw JSON; errors go to stderr and exit non-zero.
+
+To pick up new endpoints without a new release, run `fhcli spec update` (writes `~/.config/fhcli/spec.json`). `fhcli spec info` shows which spec is in use. Maintainers refresh the embedded copy with `make spec`.

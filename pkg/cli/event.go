@@ -1,44 +1,55 @@
 package cli
 
 import (
-	"fmt"
+	"context"
 	"strings"
 	"time"
 
-	"github.com/firehydrant/api-client-go/client/changes"
-	"github.com/firehydrant/api-client-go/fhclient"
-	"github.com/firehydrant/api-client-go/models"
-	"github.com/go-openapi/strfmt"
-	"gopkg.in/urfave/cli.v1"
+	"github.com/firehydrant/firehydrant-go-sdk/models/components"
+	"github.com/urfave/cli/v3"
 )
 
-func eventCmd(c *cli.Context) error {
-	client, err := NewApiClient(c)
+func newEventCmd() *cli.Command {
+	return &cli.Command{
+		Name:   "event",
+		Usage:  "submit a change event to the FireHydrant API",
+		Action: eventCmd,
+		Flags:  sharedFlags,
+	}
+}
+
+func eventCmd(ctx context.Context, cmd *cli.Command) error {
+	client, err := getClient(ctx)
 	if err != nil {
-		return err
+		return handleError(cmd, err)
 	}
 
-	params := changes.NewPostV1ChangesEventsParams()
-	summary := strings.Join(c.Args(), " ")
+	summary := strings.Join(cmd.Args().Slice(), " ")
 
-	identities := fhclient.APIKVtoChangeIdentities(fhclient.MapToAPIKV(fhclient.ParseKV(c.String("identities"))))
-
-	params.PostV1ChangesEvents = &models.PostV1ChangesEvents{
-		Environments:     fhclient.ParamToList(c.String("environment")),
-		Services:         fhclient.ParamToList(c.String("service")),
-		StartsAt:         strfmt.DateTime(time.Now()),
-		EndsAt:           strfmt.DateTime(time.Now()),
-		Summary:          &summary,
-		ChangeIdentities: identities,
-		Labels:           fhclient.ParseKV(c.String("labels")),
+	identities := parseKV(cmd.String("identities"))
+	changeIdentities := make([]components.ChangeIdentity, 0, len(identities))
+	for k, v := range identities {
+		changeIdentities = append(changeIdentities, components.ChangeIdentity{
+			Type:  k,
+			Value: v,
+		})
 	}
 
-	resp, err := client.Client.Changes.PostV1ChangesEvents(params, client.Auth)
+	now := time.Now()
+	req := components.CreateChangeEvent{
+		Summary:          summary,
+		Environments:     paramToList(cmd.String("environment")),
+		Services:         paramToList(cmd.String("service")),
+		StartsAt:         &now,
+		EndsAt:           &now,
+		Labels:           parseKV(cmd.String("labels")),
+		ChangeIdentities: changeIdentities,
+	}
 
+	resp, err := client.Changes.CreateChangeEvent(ctx, req)
 	if err != nil {
-		return handleError(c, err)
+		return handleError(cmd, err)
 	}
 
-	fmt.Println(fmt.Sprintf("Created change event %s", resp.Payload.ID))
-	return nil
+	return outputResult(cmd, resp)
 }
